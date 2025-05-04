@@ -42,6 +42,18 @@ app.use('/api/taxes',             auth, require('./routes/taxes'));
 app.use('/api/reports',           auth, require('./routes/reports'));
 app.use('/api/departments',       auth, require('./routes/departments'));
 
+app.use('/api/suppliers',       auth, require('./routes/suppliers'));
+app.use('/api/catalog',         auth, require('./routes/catalog'));
+app.use('/api/purchase-orders', auth, require('./routes/purchase_orders'));
+
+// report endpoints
+app.use('/api/sales',     auth, require('./routes/reports_sales'));
+app.use('/api/finance',   auth, require('./routes/reports_finance'));
+app.use('/api/taxes',     auth, require('./routes/reports_taxes'));
+app.use('/api/leave',     auth, require('./routes/reports_leave'));
+app.use('/api/cashflow',  auth, require('./routes/reports_cashflow'));
+
+
 // Complaints route
 app.use('/api/complaints',        auth, require('./routes/complaints'));
 
