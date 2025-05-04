@@ -1,10 +1,12 @@
+// branding-shop-backend/server.js
+
 const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
 
 const app = express();
 
-// Allow all origins so your GitHub Pages frontend can communicate
+// Allow all origins so your GitHub Pages frontend (and any other client) can communicate
 app.use(cors());
 app.use(express.json());
 
@@ -39,6 +41,8 @@ app.use('/api/daily-transactions',auth, require('./routes/transactions'));
 app.use('/api/taxes',             auth, require('./routes/taxes'));
 app.use('/api/reports',           auth, require('./routes/reports'));
 app.use('/api/departments',       auth, require('./routes/departments'));
+
+// Complaints route
 app.use('/api/complaints',        auth, require('./routes/complaints'));
 
 const PORT = process.env.PORT || 3000;
