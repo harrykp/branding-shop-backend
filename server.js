@@ -1,11 +1,12 @@
 const express = require('express');
-const cors = require('cors');
+const cors = require('cors');           // <-- updated
 require('dotenv').config();
 
 const app = express();
-app.use(cors({
-  origin: process.env.GITHUB_PAGES_URL
-}));
+
+// Allow all origins so your GitHub Pages frontend can talk to it
+app.use(cors());
+
 app.use(express.json());
 
 // Auth & Users
@@ -43,4 +44,3 @@ app.use('/api/departments', require('./routes/departments'));
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`API listening on port ${PORT}`));
-
