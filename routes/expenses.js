@@ -1,29 +1,27 @@
+// branding-shop-backend/routes/expenses.js
 const router = require('express').Router();
 const db = require('../db');
 
-// GET /api/expenses
+// GET all
 router.get('/', async (req, res) => {
   const { rows } = await db.query(`
-    SELECT e.id,e.user_id,u.name AS user,e.amount,e.category,e.description,e.expense_date
-    FROM expenses e
-    JOIN users u ON u.id=e.user_id
-    ORDER BY e.expense_date DESC
+    SELECT * FROM expenses ORDER BY expense_date DESC
   `);
   res.json(rows);
 });
 
-// POST /api/expenses
+// CREATE
 router.post('/', async (req, res) => {
-  const { user_id, amount, category, description, expense_date } = req.body;
+  const { amount,category,description,expense_date } = req.body;
   const { rows } = await db.query(
     `INSERT INTO expenses(user_id,amount,category,description,expense_date)
      VALUES($1,$2,$3,$4,$5) RETURNING *`,
-    [user_id,amount,category,description,expense_date]
+    [req.user.id,amount,category,description,expense_date]
   );
   res.status(201).json(rows[0]);
 });
 
-// DELETE /api/expenses/:id
+// DELETE
 router.delete('/:id', async (req, res) => {
   await db.query(`DELETE FROM expenses WHERE id=$1`, [req.params.id]);
   res.status(204).end();
