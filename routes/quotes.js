@@ -76,6 +76,8 @@ router.post('/', async (req, res) => {
   const customer_id          = req.user.id;
   const { product_category_id, quantity } = req.body;
 
+  console.log('🔑 authenticated user id =', customer_id);
+
   if (!product_category_id || !quantity) {
     return res
       .status(400)
