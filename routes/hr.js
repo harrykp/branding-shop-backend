@@ -7,7 +7,13 @@ const db = require('../db');
 router.get('/', async (req, res) => {
   try {
     const { rows } = await db.query(`
-      SELECT h.id, u.name AS user_name, h.ssn, h.position, h.salary, h.hire_date
+      SELECT 
+        h.id,
+        u.name     AS name,       -- alias as 'name' so frontend h.name works
+        h.ssn,
+        h.position,
+        h.salary,
+        h.hire_date
       FROM hr_info h
       JOIN users u ON u.id = h.user_id
       ORDER BY h.user_id
@@ -23,10 +29,19 @@ router.get('/', async (req, res) => {
 router.get('/:id', async (req, res) => {
   try {
     const { rows } = await db.query(
-      `SELECT h.id, h.user_id, u.name AS user_name, h.ssn, h.position, h.salary, h.hire_date
-       FROM hr_info h
-       JOIN users u ON u.id = h.user_id
-       WHERE h.id = $1`,
+      `
+        SELECT 
+          h.id,
+          h.user_id,
+          u.name     AS name,   -- also alias here
+          h.ssn,
+          h.position,
+          h.salary,
+          h.hire_date
+        FROM hr_info h
+        JOIN users u ON u.id = h.user_id
+        WHERE h.id = $1
+      `,
       [req.params.id]
     );
     if (!rows[0]) {
@@ -53,10 +68,12 @@ router.patch('/:id', async (req, res) => {
     }
 
     const { rows } = await db.query(
-      `UPDATE hr_info
-       SET ${sets.join(', ')}
-       WHERE id = $${sets.length + 1}
-       RETURNING id, user_id, position, salary, hire_date`,
+      `
+        UPDATE hr_info
+        SET ${sets.join(', ')}
+        WHERE id = $${sets.length + 1}
+        RETURNING id, user_id, position, salary, hire_date
+      `,
       [...vals, req.params.id]
     );
     res.json(rows[0]);
