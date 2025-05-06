@@ -73,11 +73,17 @@ router.get('/:id', async (req, res) => {
 
 // POST create new quote (applies pricing rules)
 router.post('/', async (req, res) => {
-  const customer_id          = req.user.id;
+  // Try to get the authenticated user ID first, fallback to body.customer_id
+  const customer_id = req.user?.id || req.body.customer_id;
   const { product_category_id, quantity } = req.body;
 
-  console.log('🔑 authenticated user id =', customer_id);
+  console.log('🔑 customer_id (from token or body) =', customer_id);
 
+  if (!customer_id) {
+    return res
+      .status(401)
+      .json({ error: 'Authentication required or customer_id missing' });
+  }
   if (!product_category_id || !quantity) {
     return res
       .status(400)
@@ -107,6 +113,12 @@ router.post('/', async (req, res) => {
     res.status(201).json(rows[0]);
   } catch (err) {
     console.error('POST /api/quotes error', err);
+    // If FK constraint still fails, return a clear 400 instead of 500
+    if (err.code === '23503' && err.constraint === 'quotes_customer_id_fkey') {
+      return res
+        .status(400)
+        .json({ error: `Invalid customer_id=${customer_id}` });
+    }
     res
       .status(500)
       .json({ error: err.message || 'Failed to create quote' });
