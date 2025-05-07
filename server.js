@@ -43,6 +43,7 @@ app.use('/api/taxes',             auth, require('./routes/taxes'));
 app.use('/api/reports',           auth, require('./routes/reports'));
 app.use('/api/departments',       auth, require('./routes/departments'));
 app.use('/api/complaints',        auth, require('./routes/complaints'));
+app.use('/api/product-categories', auth, require('./routes/product_categories'));
 
 // Report sub-endpoints
 app.use('/api/sales',    auth, require('./routes/reports_sales'));
