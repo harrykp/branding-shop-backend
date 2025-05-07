@@ -19,26 +19,28 @@ async function getUnitPrice(categoryId, qty) {
   return rows[0].unit_price;
 }
 
-// GET all quotes
+// GET all quotes for the current user
 router.get('/', async (req, res) => {
   try {
-    const { rows } = await db.query(`
-      SELECT
-        q.id,
-        q.customer_id,
-        u.name      AS customer_name,
-        q.product_category_id,
-        c.name      AS category_name,
-        q.quantity,
-        q.unit_price,
-        q.total,
-        q.status,
-        q.created_at
-      FROM quotes q
-      JOIN users u               ON u.id = q.customer_id
-      JOIN product_categories c  ON c.id = q.product_category_id
-      ORDER BY q.created_at DESC
-    `);
+    const { rows } = await db.query(
+      `SELECT
+         q.id,
+         q.customer_id,
+         u.name      AS customer_name,
+         q.product_category_id,
+         c.name      AS category_name,
+         q.quantity,
+         q.unit_price,
+         q.total,
+         q.status,
+         q.created_at
+       FROM quotes q
+       JOIN users u              ON u.id = q.customer_id
+       JOIN product_categories c ON c.id = q.product_category_id
+       WHERE q.customer_id = $1
+       ORDER BY q.created_at DESC`,
+      [req.user.id]
+    );
     res.json(rows);
   } catch (err) {
     console.error('GET /api/quotes error', err);
