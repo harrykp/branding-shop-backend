@@ -150,13 +150,18 @@ router.post('/push/:dealId', async (req, res) => {
     const qty = quotes[0]?.quantity || 0;
 
     // 4) Insert the new production job
-    const { rows: jobRows } = await db.query(`
-      INSERT INTO jobs 
-        (quote_id, type, status, qty, start_date, due_date)
-      VALUES 
-        ($1, 'production', 'queued', $2, NOW(), NOW() + INTERVAL '1 day')
-      RETURNING *
-    `, [quoteId, qty]);
+  const { rows: jobRows } = await db.query(` 
+    INSERT INTO jobs 
+      (order_id, type,   status,    qty, department_id, assigned_to, start_date,                      due_date) 
+    VALUES 
+      ($1,       'production', 'queued', $2, $3,           $4,           NOW(),                         NOW() + INTERVAL '1 day') 
+    RETURNING * 
+  `, [ 
+    orderId,        // $1 → must be an existing orders.id 
+    qty,            // $2 → total quantity 
+    departmentId,   // $3 → whichever department this lives in 
+    assignedTo      // $4 → user.id of whoever’s “assigned_to” 
+  ]);
 
     res.status(201).json(jobRows[0]);
   } catch (err) {
