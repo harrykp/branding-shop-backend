@@ -72,6 +72,47 @@ router.post('/', async (req, res) => {
   }
 });
 
-// PATCH, DELETE, etc… (leave your existing handlers here)
+// PATCH update order (status, payment_status)
+router.patch('/:id', async (req, res) => {
+  const fields = ['status','payment_status'];
+  const sets = [], vals = [];
+  fields.forEach(f => {
+    if (req.body[f] !== undefined) {
+      sets.push(`${f}=$${sets.length+1}`);
+      vals.push(req.body[f]);
+    }
+  });
+  if (!sets.length) return res.status(400).json({ error: 'No updatable fields' });
+  vals.push(req.params.id);
 
+  try {
+    const { rows } = await db.query(
+      `UPDATE orders
+       SET ${sets.join(', ')}
+       WHERE id=$${vals.length}
+       RETURNING *`,
+      vals
+    );
+    if (!rows[0]) return res.status(404).json({ error: 'Order not found' });
+    res.json(rows[0]);
+  } catch (err) {
+    console.error(`PATCH /api/orders/${req.params.id} error`, err);
+    res.status(500).json({ error: 'Failed to update order' });
+  }
+});
+
+// DELETE order
+router.delete('/:id', async (req, res) => {
+  try {
+    const { rowCount } = await db.query(
+      `DELETE FROM orders WHERE id=$1`,
+      [req.params.id]
+    );
+    if (!rowCount) return res.status(404).json({ error: 'Order not found' });
+    res.sendStatus(204);
+  } catch (err) {
+    console.error(`DELETE /api/orders/${req.params.id} error`, err);
+    res.status(500).json({ error: 'Failed to delete order' });
+  }
+});
 module.exports = router;
