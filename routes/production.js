@@ -40,7 +40,7 @@ router.get('/', async (req, res) => {
 router.get('/:id', async (req, res) => {
   try {
     const { rows } = await db.query(
-      `SELECT * FROM jobs WHERE id=$1`,
+      `SELECT * FROM jobs WHERE id = $1`,
       [req.params.id]
     );
     if (!rows[0]) return res.status(404).json({ error: 'Job not found' });
@@ -78,7 +78,7 @@ router.patch('/:id', async (req, res) => {
   const sets = [], vals = [];
   updatable.forEach(f => {
     if (req.body[f] !== undefined) {
-      sets.push(`${f}=$${sets.length+1}`);
+      sets.push(`${f} = $${sets.length+1}`);
       vals.push(req.body[f]);
     }
   });
@@ -88,7 +88,7 @@ router.patch('/:id', async (req, res) => {
   try {
     const { rows } = await db.query(
       `UPDATE jobs
-       SET ${sets.join(',')}
+       SET ${sets.join(', ')}
        WHERE id = $${vals.length}
        RETURNING *`,
       vals
@@ -129,39 +129,47 @@ router.post('/push/:dealId', async (req, res) => {
       WHERE ur.user_id = $1
     `, [req.user.id]);
     const roleNames = userRoles.map(r => r.name);
-    if (!roleNames.includes('manager') && !roleNames.includes('chief_executive')
-        && !roleNames.includes('system_admin') && !roleNames.includes('super_admin')) {
+    if (!roleNames.includes('manager')
+     && !roleNames.includes('chief_executive')
+     && !roleNames.includes('system_admin')
+     && !roleNames.includes('super_admin')) {
       return res.status(403).json({ error: 'Forbidden' });
     }
 
-    // 2) Load deal → get its quote_id
-    const { rows: deals } = await db.query(
-      `SELECT quote_id FROM deals WHERE id = $1`,
+    // 2) Load deal → get its order_id
+    const { rows: dealRows } = await db.query(
+      `SELECT order_id FROM deals WHERE id = $1`,
       [req.params.dealId]
     );
-    if (!deals[0]) return res.status(404).json({ error: 'Deal not found' });
-    const quoteId = deals[0].quote_id;
+    if (!dealRows[0]) return res.status(404).json({ error: 'Deal not found' });
+    const orderId = dealRows[0].order_id;
 
-    // 3) Lookup the quote’s quantity
-    const { rows: quotes } = await db.query(
+    // 3) Lookup the quote’s quantity via orders → quotes
+    const { rows: orderRows } = await db.query(
+      `SELECT quote_id FROM orders WHERE id = $1`,
+      [orderId]
+    );
+    if (!orderRows[0]) return res.status(404).json({ error: 'Order not found' });
+    const quoteId = orderRows[0].quote_id;
+
+    const { rows: quoteRows } = await db.query(
       `SELECT quantity FROM quotes WHERE id = $1`,
       [quoteId]
     );
-    const qty = quotes[0]?.quantity || 0;
+    const qty = quoteRows[0]?.quantity || 0;
 
-    // 4) Insert the new production job
-  const { rows: jobRows } = await db.query(` 
-    INSERT INTO jobs 
-      (order_id, type,   status,    qty, department_id, assigned_to, start_date,                      due_date) 
-    VALUES 
-      ($1,       'production', 'queued', $2, $3,           $4,           NOW(),                         NOW() + INTERVAL '1 day') 
-    RETURNING * 
-  `, [ 
-    orderId,        // $1 → must be an existing orders.id 
-    qty,            // $2 → total quantity 
-    departmentId,   // $3 → whichever department this lives in 
-    assignedTo      // $4 → user.id of whoever’s “assigned_to” 
-  ]);
+    // 4) Determine department & assignee—fall back to current user if missing
+    const departmentId = dealRows[0].department_id || null;
+    const assignedTo   = dealRows[0].assigned_to   || req.user.id;
+
+    // 5) Insert the new production job
+    const { rows: jobRows } = await db.query(`
+      INSERT INTO jobs
+        (order_id, type, status, qty, department_id, assigned_to, start_date, due_date)
+      VALUES
+        ($1, 'production', 'queued', $2, $3, $4, NOW(), NOW() + INTERVAL '1 day')
+      RETURNING *
+    `, [orderId, qty, departmentId, assignedTo]);
 
     res.status(201).json(jobRows[0]);
   } catch (err) {
@@ -169,7 +177,5 @@ router.post('/push/:dealId', async (req, res) => {
     res.status(500).json({ error: 'Failed to push to production' });
   }
 });
-
-
 
 module.exports = router;
