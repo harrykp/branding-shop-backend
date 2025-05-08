@@ -73,16 +73,43 @@ router.post('/', async (req, res) => {
   }
 
   try {
-    // lookup product price
-    const prodQ = await db.query(
-      `SELECT price FROM products WHERE id = $1`,
-      [product_id]
-    );
-    if (!prodQ.rows[0]) {
-      return res.status(400).json({ error: `Invalid product_id=${product_id}` });
-    }
-    const unitPrice = parseFloat(prodQ.rows[0].price);
-    const total     = unitPrice * parseInt(quantity, 10);
+// 1) lookup base product price + category
+const prodRes = await db.query(
+  `SELECT price, category_id
+     FROM products
+    WHERE id = $1`,
+  [product_id]
+);
+if (!prodRes.rows[0]) {
+  return res.status(400).json({ error: `Invalid product_id=${product_id}` });
+}
+let unitPrice = parseFloat(prodRes.rows[0].price);
+const categoryId = prodRes.rows[0].category_id;
+
+// 2) fetch any matching pricing rules (category‐specific OR global)
+const rulesRes = await db.query(
+  `SELECT rule_type, unit_price AS rule_val
+     FROM pricing_rules
+    WHERE (product_category_id IS NULL OR product_category_id = $1)
+      AND $2 >= min_qty
+      AND ( $2 <= max_qty OR max_qty IS NULL )`,
+  [categoryId, quantity]
+);
+
+// 3) apply each matching rule in turn
+for (const { rule_type, rule_val } of rulesRes.rows) {
+  const pct = parseFloat(rule_val);
+  if (rule_type === 'surcharge_pct') {
+    // e.g. pct = 1.0 means +100% → double price
+    unitPrice = unitPrice * (1 + pct);
+  } else if (rule_type === 'discount_pct') {
+    // e.g. pct = 0.02 means 2% off
+    unitPrice = unitPrice * (1 - pct);
+  }
+}
+
+// 4) compute total
+const total = unitPrice * parseInt(quantity, 10);
 
     // insert the quote
     const { rows } = await db.query(
