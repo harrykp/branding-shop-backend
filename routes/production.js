@@ -116,4 +116,55 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
+// ──────────────────────────────────────────────────────────────
+// Push a deal to production (managers & up only)
+// POST /api/jobs/push/:dealId
+router.post('/push/:dealId', async (req, res) => {
+  try {
+    // 1) Check manager role
+    const { rows: userRoles } = await db.query(`
+      SELECT r.name
+      FROM user_roles ur
+      JOIN roles r       ON r.id = ur.role_id
+      WHERE ur.user_id = $1
+    `, [req.user.id]);
+    const roleNames = userRoles.map(r => r.name);
+    if (!roleNames.includes('manager') && !roleNames.includes('chief_executive')
+        && !roleNames.includes('system_admin') && !roleNames.includes('super_admin')) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    // 2) Load deal → get its quote_id
+    const { rows: deals } = await db.query(
+      `SELECT quote_id FROM deals WHERE id = $1`,
+      [req.params.dealId]
+    );
+    if (!deals[0]) return res.status(404).json({ error: 'Deal not found' });
+    const quoteId = deals[0].quote_id;
+
+    // 3) Lookup the quote’s quantity
+    const { rows: quotes } = await db.query(
+      `SELECT quantity FROM quotes WHERE id = $1`,
+      [quoteId]
+    );
+    const qty = quotes[0]?.quantity || 0;
+
+    // 4) Insert the new production job
+    const { rows: jobRows } = await db.query(`
+      INSERT INTO jobs 
+        (quote_id, type, status, qty, start_date, due_date)
+      VALUES 
+        ($1, 'production', 'queued', $2, NOW(), NOW() + INTERVAL '1 day')
+      RETURNING *
+    `, [quoteId, qty]);
+
+    res.status(201).json(jobRows[0]);
+  } catch (err) {
+    console.error('POST /api/jobs/push/:dealId error', err);
+    res.status(500).json({ error: 'Failed to push to production' });
+  }
+});
+
+
+
 module.exports = router;
