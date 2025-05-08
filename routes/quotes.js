@@ -11,8 +11,10 @@ router.get('/', async (req, res) => {
         q.id,
         q.customer_id,
         u.name               AS customer_name,
+        u.phone_number       AS customer_phone,
         q.product_id,
         p.name               AS product_name,
+        p.sku                AS product_code,
         q.quantity,
         q.unit_price,
         q.total,
@@ -35,16 +37,22 @@ router.get('/:id', async (req, res) => {
   try {
     const { rows } = await db.query(
       `SELECT
-         id,
-         customer_id,
-         product_id,
-         quantity,
-         unit_price,
-         total,
-         status,
-         created_at
-       FROM quotes
-       WHERE id = $1`,
+         q.id,
+         q.customer_id,
+         u.name               AS customer_name,
+         u.phone_number       AS customer_phone,
+         q.product_id,
+         p.name               AS product_name,
+         p.sku                AS product_code,
+         q.quantity,
+         q.unit_price,
+         q.total,
+         q.status,
+         q.created_at
+       FROM quotes q
+       JOIN users    u ON u.id = q.customer_id
+       JOIN products p ON p.id = q.product_id
+       WHERE q.id = $1`,
       [req.params.id]
     );
     if (!rows[0]) return res.status(404).json({ error: 'Quote not found' });
