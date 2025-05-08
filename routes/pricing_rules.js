@@ -6,10 +6,21 @@ const db     = require('../db');
 // GET all pricing rules
 router.get('/', async (req, res) => {
   try {
-    const { rows } = await db.query(`
-      SELECT id, name, product_category_id, rule_type, min_qty, max_qty, unit_price, created_at, updated_at
-      FROM pricing_rules
-      ORDER BY id
+SELECT
+  pr.id,
+  pr.name,
+  pr.product_category_id,
+  pc.name       AS category_name,
+  pr.rule_type,
+  pr.min_qty,
+  pr.max_qty,
+  pr.unit_price,
+  pr.created_at,
+  pr.updated_at
+FROM pricing_rules pr
+LEFT JOIN product_categories pc
+  ON pc.id = pr.product_category_id
+ORDER BY pr.id;
     `);
     res.json(rows);
   } catch (err) {
@@ -21,10 +32,23 @@ router.get('/', async (req, res) => {
 // GET one
 router.get('/:id', async (req, res) => {
   try {
-    const { rows } = await db.query(
-      `SELECT id, name, product_category_id, rule_type, min_qty, max_qty, unit_price
-       FROM pricing_rules WHERE id = $1`,
-      [req.params.id]
+    const { rows } = await db.query( 
+      `SELECT 
+         pr.id, 
+         pr.name, 
+         pr.product_category_id, 
+         pc.name       AS category_name, 
+         pr.rule_type, 
+         pr.min_qty, 
+         pr.max_qty, 
+         pr.unit_price, 
+         pr.created_at, 
+         pr.updated_at 
+       FROM pricing_rules pr 
+       LEFT JOIN product_categories pc 
+         ON pc.id = pr.product_category_id 
+       WHERE pr.id = $1`, 
+      [req.params.id] 
     );
     if (!rows[0]) return res.status(404).json({ error: 'Not found' });
     res.json(rows[0]);
