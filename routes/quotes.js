@@ -1,46 +1,28 @@
 // branding-shop-backend/routes/quotes.js
 
 const router = require('express').Router();
-const db = require('../db');
+const db     = require('../db');
 
-// Helper: fetch unit price via pricing_rules
-async function getUnitPrice(categoryId, qty) {
-  const { rows } = await db.query(
-    `SELECT unit_price
-     FROM pricing_rules
-     WHERE product_category_id = $1
-       AND min_qty <= $2
-       AND (max_qty IS NULL OR max_qty >= $2)
-     ORDER BY min_qty DESC
-     LIMIT 1`,
-    [categoryId, qty]
-  );
-  if (!rows[0]) throw new Error('No pricing rule matches this category & quantity');
-  return rows[0].unit_price;
-}
-
-// GET all quotes for the current user
+// GET all quotes
 router.get('/', async (req, res) => {
   try {
-    const { rows } = await db.query(
-      `SELECT
-         q.id,
-         q.customer_id,
-         u.name      AS customer_name,
-         q.product_category_id,
-         c.name      AS category_name,
-         q.quantity,
-         q.unit_price,
-         q.total,
-         q.status,
-         q.created_at
-       FROM quotes q
-       JOIN users u              ON u.id = q.customer_id
-       JOIN product_categories c ON c.id = q.product_category_id
-       WHERE q.customer_id = $1
-       ORDER BY q.created_at DESC`,
-      [req.user.id]
-    );
+    const { rows } = await db.query(`
+      SELECT
+        q.id,
+        q.customer_id,
+        u.name               AS customer_name,
+        q.product_id,
+        p.name               AS product_name,
+        q.quantity,
+        q.unit_price,
+        q.total,
+        q.status,
+        q.created_at
+      FROM quotes q
+      JOIN users    u ON u.id = q.customer_id
+      JOIN products p ON p.id = q.product_id
+      ORDER BY q.created_at DESC
+    `);
     res.json(rows);
   } catch (err) {
     console.error('GET /api/quotes error', err);
@@ -55,7 +37,7 @@ router.get('/:id', async (req, res) => {
       `SELECT
          id,
          customer_id,
-         product_category_id,
+         product_id,
          quantity,
          unit_price,
          total,
@@ -73,65 +55,56 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// POST create new quote (applies pricing rules)
+// POST create new quote (by product)
 router.post('/', async (req, res) => {
-  // Try to get the authenticated user ID first, fallback to body.customer_id
-  const customer_id = req.user?.id || req.body.customer_id;
-  const { product_category_id, quantity } = req.body;
+  const customer_id = req.user.id;
+  const { product_id, quantity } = req.body;
 
-  console.log('🔑 customer_id (from token or body) =', customer_id);
-
-  if (!customer_id) {
-    return res
-      .status(401)
-      .json({ error: 'Authentication required or customer_id missing' });
-  }
-  if (!product_category_id || !quantity) {
-    return res
-      .status(400)
-      .json({ error: 'Missing product_category_id or quantity' });
+  if (!product_id || !quantity) {
+    return res.status(400).json({ error: 'Missing product_id or quantity' });
   }
 
   try {
-    // lookup unit price based on rules
-    const unitPrice = await getUnitPrice(product_category_id, quantity);
-    const total     = parseFloat(unitPrice) * parseInt(quantity, 10);
+    // lookup product price
+    const prodQ = await db.query(
+      `SELECT price FROM products WHERE id = $1`,
+      [product_id]
+    );
+    if (!prodQ.rows[0]) {
+      return res.status(400).json({ error: `Invalid product_id=${product_id}` });
+    }
+    const unitPrice = parseFloat(prodQ.rows[0].price);
+    const total     = unitPrice * parseInt(quantity, 10);
 
+    // insert the quote
     const { rows } = await db.query(
       `INSERT INTO quotes
-         (customer_id, product_category_id, quantity, unit_price, total, status)
+         (customer_id, product_id, quantity, unit_price, total, status)
        VALUES ($1, $2, $3, $4, $5, 'pending')
        RETURNING
          id,
          customer_id,
-         product_category_id,
+         product_id,
          quantity,
          unit_price,
          total,
          status,
          created_at`,
-      [customer_id, product_category_id, quantity, unitPrice, total]
+      [customer_id, product_id, quantity, unitPrice, total]
     );
+
     res.status(201).json(rows[0]);
   } catch (err) {
     console.error('POST /api/quotes error', err);
-    // If FK constraint still fails, return a clear 400 instead of 500
-    if (err.code === '23503' && err.constraint === 'quotes_customer_id_fkey') {
-      return res
-        .status(400)
-        .json({ error: `Invalid customer_id=${customer_id}` });
-    }
-    res
-      .status(500)
-      .json({ error: err.message || 'Failed to create quote' });
+    res.status(500).json({ error: err.message || 'Failed to create quote' });
   }
 });
 
-// PATCH update quote (allows status change)
+// PATCH update quote (status only)
 router.patch('/:id', async (req, res) => {
   const fields = ['status'];
-  const sets = [];
-  const vals = [];
+  const sets   = [];
+  const vals   = [];
 
   fields.forEach(field => {
     if (req.body[field] !== undefined) {
