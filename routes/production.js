@@ -8,77 +8,31 @@ router.get('/', async (req, res) => {
   try {
     const { rows } = await db.query(`
       SELECT
-        j.id                           AS job_id,
-        de.id                          AS deal_id,
-        de.value                       AS deal_value,
-        cu.id                          AS customer_id,
-        cu.name                        AS customer_name,
-        cu.phone_number                AS customer_phone,
-        p.id                           AS product_id,
-        p.name                         AS product_name,
-        p.sku                          AS product_code,
-        o.id                           AS order_id,
-        o.total                        AS order_total,
-        o.payment_status               AS payment_status,
-
-        j.qty                          AS qty_ordered,
-        j.quantity_completed           AS qty_completed,
-        ROUND(
-          (j.quantity_completed::decimal / NULLIF(j.qty,0)) * 100,
-          2
-        )                              AS pct_complete,
-
-        j.start_date                   AS start_date,
-        j.completion_date              AS completion_date,
-        j.due_date                     AS due_date,
-
-        j.status                       AS job_status,
-        d.name                         AS department,
-        u.name                         AS sales_rep,
-        j.comments                     AS comments,
-
-        COALESCE(pmt.total_paid, 0)    AS completed_value,
-        (o.total - COALESCE(pmt.total_paid, 0)) AS balance_unpaid,
-
-        j.updated_by                   AS updated_by,
-        jb.name                        AS updated_by_name,
-        j.updated_at                   AS updated_at
-
+        j.id,
+        j.order_id,
+        o.status           AS order_status,
+        j.type,
+        j.qty,
+        j.status,
+        j.department_id,
+        d.name             AS department_name,
+        j.assigned_to,
+        u.name             AS assignee_name,
+        j.start_date,
+        j.due_date,
+        j.pushed_from_date,
+        j.started_at,
+        j.finished_at,
+        j.completed_qty,
+        j.comments,
+        j.updated_by,
+        j.updated_at
       FROM jobs j
-      LEFT JOIN orders o
-        ON o.id = j.order_id
-
-      LEFT JOIN (
-        SELECT order_id, SUM(amount) AS total_paid
-        FROM payments
-        GROUP BY order_id
-      ) pmt
-        ON pmt.order_id = o.id
-
-      LEFT JOIN quotes q
-        ON q.id = o.quote_id
-
-      LEFT JOIN deals de
-        ON de.quote_id = q.id
-
-      LEFT JOIN products p
-        ON p.id = q.product_id
-
-      LEFT JOIN users cu
-        ON cu.id = q.customer_id
-
-      LEFT JOIN users u
-        ON u.id = j.assigned_to
-
-      LEFT JOIN users jb
-        ON jb.id = j.updated_by
-
-      LEFT JOIN departments d
-        ON d.id = j.department_id
-
+      LEFT JOIN orders     o ON o.id = j.order_id
+      LEFT JOIN departments d ON d.id = j.department_id
+      LEFT JOIN users      u ON u.id = j.assigned_to
       ORDER BY j.due_date ASC, j.id DESC
     `);
-
     res.json(rows);
   } catch (err) {
     console.error('GET /api/jobs error', err);
@@ -89,7 +43,10 @@ router.get('/', async (req, res) => {
 // GET single job
 router.get('/:id', async (req, res) => {
   try {
-    const { rows } = await db.query(`SELECT * FROM jobs WHERE id=$1`, [req.params.id]);
+    const { rows } = await db.query(
+      `SELECT * FROM jobs WHERE id=$1`,
+      [req.params.id]
+    );
     if (!rows[0]) return res.status(404).json({ error: 'Job not found' });
     res.json(rows[0]);
   } catch (err) {
@@ -97,7 +54,8 @@ router.get('/:id', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch job' });
   }
 });
-// POST create a job manually
+
+// POST create a job
 router.post('/', async (req, res) => {
   const { order_id, type, qty, department_id, assigned_to, due_date } = req.body;
   if (!order_id || !type || !qty) {
@@ -105,22 +63,11 @@ router.post('/', async (req, res) => {
   }
   try {
     const { rows } = await db.query(
-      `
-      INSERT INTO jobs
-        (order_id, type, qty, department_id, assigned_to, status, start_date, due_date, updated_by)
-      VALUES
-        ($1, $2, $3, $4, $5, 'queued', NOW(), $6, $7)
-      RETURNING *
-      `,
-      [
-        order_id,
-        type,
-        qty,
-        department_id || null,
-        assigned_to || null,
-        due_date || null,
-        req.user.id           // updated_by
-      ]
+      `INSERT INTO jobs
+         (order_id, type, qty, department_id, assigned_to, status, due_date)
+       VALUES ($1,$2,$3,$4,$5,'queued',$6)
+       RETURNING *`,
+      [ order_id, type, qty, department_id||null, assigned_to||null, due_date||null ]
     );
     res.status(201).json(rows[0]);
   } catch (err) {
@@ -131,38 +78,26 @@ router.post('/', async (req, res) => {
 
 // PATCH update job
 router.patch('/:id', async (req, res) => {
-  const updatable = [
-    'status','assigned_to','due_date',
-    'pushed_from_date','completed_qty','comments'
-  ];
+  const updatable = ['status','assigned_to','due_date','pushed_from_date','completed_qty','comments'];
   const sets = [], vals = [];
   updatable.forEach(f => {
     if (req.body[f] !== undefined) {
-      sets.push(`${f}=$${sets.length+1}`);
+      sets.push(`${f} = $${sets.length+1}`);
       vals.push(req.body[f]);
     }
   });
-  if (!sets.length) {
-    return res.status(400).json({ error: 'Nothing to update' });
-  }
-  // always update updated_by + updated_at
-  sets.push(`updated_by=$${sets.length+1}`);
-  vals.push(req.user.id);
-
+  if (!sets.length) return res.status(400).json({ error: 'Nothing to update' });
   vals.push(req.params.id);
+
   try {
     const { rows } = await db.query(
-      `
-      UPDATE jobs
-      SET ${sets.join(',')}, updated_at = now()
-      WHERE id = $${vals.length}
-      RETURNING *
-      `,
+      `UPDATE jobs
+       SET ${sets.join(', ')}
+       WHERE id = $${vals.length}
+       RETURNING *`,
       vals
     );
-    if (!rows[0]) {
-      return res.status(404).json({ error: 'Job not found' });
-    }
+    if (!rows[0]) return res.status(404).json({ error: 'Job not found' });
     res.json(rows[0]);
   } catch (err) {
     console.error(`PATCH /api/jobs/${req.params.id} error`, err);
@@ -177,9 +112,7 @@ router.delete('/:id', async (req, res) => {
       `DELETE FROM jobs WHERE id = $1`,
       [req.params.id]
     );
-    if (!rowCount) {
-      return res.status(404).json({ error: 'Job not found' });
-    }
+    if (!rowCount) return res.status(404).json({ error: 'Job not found' });
     res.sendStatus(204);
   } catch (err) {
     console.error(`DELETE /api/jobs/${req.params.id} error`, err);
@@ -188,11 +121,13 @@ router.delete('/:id', async (req, res) => {
 });
 
 // ──────────────────────────────────────────────────────────────
-// 1) Push a deal to production (managers & up only)
+// Push a deal to production (managers & up only)
 // POST /api/jobs/push/:dealId
 router.post('/push/:dealId', async (req, res) => {
   try {
-    // 1) Check manager role
+    const dealId = parseInt(req.params.dealId, 10);
+
+    // 1) Check manager‐level role
     const { rows: userRoles } = await db.query(`
       SELECT r.name
       FROM user_roles ur
@@ -200,55 +135,52 @@ router.post('/push/:dealId', async (req, res) => {
       WHERE ur.user_id = $1
     `, [req.user.id]);
     const roleNames = userRoles.map(r => r.name);
-    if (!roleNames.includes('manager')
-        && !roleNames.includes('chief_executive')
-        && !roleNames.includes('system_admin')
-        && !roleNames.includes('super_admin')) {
+    const allowed = ['manager','chief_executive','system_admin','super_admin'];
+    if (!roleNames.some(r => allowed.includes(r))) {
       return res.status(403).json({ error: 'Forbidden' });
     }
 
-    // 2) Load deal → get quote_id & order_id (if exists)
+    // 2) Load deal → get its quote_id & sales rep (assigned_to)
     const { rows: deals } = await db.query(
-      `SELECT id, quote_id, order_id FROM deals WHERE id = $1`,
-      [req.params.dealId]
+      `SELECT quote_id, assigned_to FROM deals WHERE id = $1`,
+      [dealId]
     );
     if (!deals[0]) return res.status(404).json({ error: 'Deal not found' });
-    const deal = deals[0];
+    const { quote_id: quoteId, assigned_to } = deals[0];
 
-    // 3) Determine qty from quote
+    // 3) Find the order that came from that quote
+    const { rows: orders } = await db.query(
+      `SELECT id, department_id FROM orders WHERE quote_id = $1`,
+      [quoteId]
+    );
+    if (!orders[0]) {
+      return res.status(400).json({ error: 'No order found for that quote' });
+    }
+    const orderId      = orders[0].id;
+    const departmentId = orders[0].department_id;
+
+    // 4) Lookup the quote’s quantity
     const { rows: quotes } = await db.query(
       `SELECT quantity FROM quotes WHERE id = $1`,
-      [deal.quote_id]
+      [quoteId]
     );
     const qty = quotes[0]?.quantity || 0;
-
-    // 4) Default department & assignee (could come from req.body)
-    //    here we grab from deal or fallback to current user’s dept:
-    const departmentId = req.body.department_id || req.user.department_id;
-    const assignedTo   = req.body.assigned_to   || req.user.id;
 
     // 5) Insert the new production job
     const { rows: jobRows } = await db.query(`
       INSERT INTO jobs
-        (deal_id, order_id, type, status, qty,
-         department_id, assigned_to,
-         start_date, due_date, updated_by)
+        (order_id, type, status, qty, department_id, assigned_to, start_date, due_date)
       VALUES
-        ($1,      $2,       'production', 'queued', $3,
-         $4,           $5,
-         NOW(),       NOW() + INTERVAL '1 day', $6)
+        ($1, 'production', 'queued', $2, $3, $4, NOW(), NOW() + INTERVAL '1 day')
       RETURNING *
     `, [
-      deal.id,           // $1 → deals.id
-      deal.order_id,     // $2 → may be NULL if not yet converted
-      qty,               // $3 → quantity from quote
-      departmentId,      // $4
-      assignedTo,        // $5
-      req.user.id        // $6 → updated_by
+      orderId,        // $1
+      qty,            // $2
+      departmentId,   // $3
+      assigned_to     // $4
     ]);
 
     res.status(201).json(jobRows[0]);
-
   } catch (err) {
     console.error('POST /api/jobs/push/:dealId error', err);
     res.status(500).json({ error: 'Failed to push to production' });
