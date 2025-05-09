@@ -63,7 +63,7 @@ router.post('/', async (req, res) => {
          (order_id, type, qty, department_id, assigned_to, status, due_date)
        VALUES ($1,$2,$3,$4,$5,'queued',$6)
        RETURNING *`,
-      [order_id, type, qty, department_id||null, assigned_to||null, due_date||null]
+      [order_id, type, qty, department_id || null, assigned_to || null, due_date || null]
     );
     res.status(201).json(rows[0]);
   } catch (err) {
@@ -78,7 +78,7 @@ router.patch('/:id', async (req, res) => {
   const sets = [], vals = [];
   updatable.forEach(f => {
     if (req.body[f] !== undefined) {
-      sets.push(`${f} = $${sets.length+1}`);
+      sets.push(`${f} = $${sets.length + 1}`);
       vals.push(req.body[f]);
     }
   });
@@ -116,7 +116,7 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
-// ──────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────
 // Push a deal to production (managers & up only)
 // POST /api/jobs/push/:dealId
 router.post('/push/:dealId', async (req, res) => {
@@ -129,33 +129,33 @@ router.post('/push/:dealId', async (req, res) => {
       WHERE ur.user_id = $1
     `, [req.user.id]);
     const roleNames = userRoles.map(r => r.name);
-    if (!roleNames.includes('manager')
-     && !roleNames.includes('chief_executive')
-     && !roleNames.includes('system_admin')
-     && !roleNames.includes('super_admin')) {
+    if (!roleNames.includes('manager') &&
+        !roleNames.includes('chief_executive') &&
+        !roleNames.includes('system_admin') &&
+        !roleNames.includes('super_admin')) {
       return res.status(403).json({ error: 'Forbidden' });
     }
 
-    // 2) Load deal → get its quantity (value) and assignee
-    const { rows: dealRows } = await db.query(
-      `SELECT value AS qty, assigned_to
-       FROM deals
-       WHERE id = $1`,
-      [req.params.dealId]
-    );
+    // 2) Load deal → get its quantity (value) and (optional) assigned_to
+    const { rows: dealRows } = await db.query(`
+      SELECT value AS qty, assigned_to
+      FROM deals
+      WHERE id = $1
+    `, [req.params.dealId]);
     if (!dealRows[0]) return res.status(404).json({ error: 'Deal not found' });
-    const qty        = dealRows[0].qty;
-    const assignedTo = dealRows[0].assigned_to || req.user.id;
+    const qty          = dealRows[0].qty;
+    const assignedTo   = dealRows[0].assigned_to || req.user.id;
     const departmentId = req.user.department_id || null;
+    const orderId      = null;  // deals aren’t tied to orders in this schema
 
-    // 3) Insert the new production job (order_id = NULL)
+    // 3) Insert the new production job
     const { rows: jobRows } = await db.query(`
       INSERT INTO jobs
         (order_id, type, status, qty, department_id, assigned_to, start_date, due_date)
       VALUES
-        (NULL, 'production', 'queued', $1, $2, $3, NOW(), NOW() + INTERVAL '1 day')
+        ($1, 'production', 'queued', $2, $3, $4, NOW(), NOW() + INTERVAL '1 day')
       RETURNING *
-    `, [qty, departmentId, assignedTo]);
+    `, [orderId, qty, departmentId, assignedTo]);
 
     res.status(201).json(jobRows[0]);
   } catch (err) {
