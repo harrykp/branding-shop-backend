@@ -24,9 +24,9 @@ router.get('/', async (req, res) => {
         j.started_at,
         j.finished_at
       FROM jobs j
-      LEFT JOIN orders      o ON o.id = j.order_id
-      LEFT JOIN departments d ON d.id = j.department_id
-      LEFT JOIN users       u ON u.id = j.assigned_to
+      LEFT JOIN orders o       ON o.id = j.order_id
+      LEFT JOIN departments d  ON d.id = j.department_id
+      LEFT JOIN users u        ON u.id = j.assigned_to
       ORDER BY j.due_date ASC, j.id DESC
     `);
     res.json(rows);
@@ -136,44 +136,26 @@ router.post('/push/:dealId', async (req, res) => {
       return res.status(403).json({ error: 'Forbidden' });
     }
 
-    // 2) Lookup the deal → get its quote_id (must exist after you ALTER TABLE)
+    // 2) Load deal → get its quantity (value) and assignee
     const { rows: dealRows } = await db.query(
-      `SELECT quote_id FROM deals WHERE id = $1`,
+      `SELECT value AS qty, assigned_to
+       FROM deals
+       WHERE id = $1`,
       [req.params.dealId]
     );
     if (!dealRows[0]) return res.status(404).json({ error: 'Deal not found' });
-    const quoteId = dealRows[0].quote_id;
+    const qty        = dealRows[0].qty;
+    const assignedTo = dealRows[0].assigned_to || req.user.id;
+    const departmentId = req.user.department_id || null;
 
-    // 3) Find the order generated from that quote
-    const { rows: orderRows } = await db.query(
-      `SELECT id FROM orders WHERE quote_id = $1`,
-      [quoteId]
-    );
-    if (!orderRows[0]) {
-      return res.status(400).json({ error: 'No Order exists for that Quote' });
-    }
-    const orderId = orderRows[0].id;
-
-    // 4) Pull the original quantity from the quote
-    const { rows: quoteRows } = await db.query(
-      `SELECT quantity FROM quotes WHERE id = $1`,
-      [quoteId]
-    );
-    const qty = quoteRows[0]?.quantity || 0;
-
-    // 5) Default department & assignee
-    //    (you can tweak these as needed)
-    const departmentId = dealRows[0].department_id || null;
-    const assignedTo   = dealRows[0].assigned_to   || req.user.id;
-
-    // 6) Create the production job
+    // 3) Insert the new production job (order_id = NULL)
     const { rows: jobRows } = await db.query(`
       INSERT INTO jobs
         (order_id, type, status, qty, department_id, assigned_to, start_date, due_date)
       VALUES
-        ($1, 'production', 'queued', $2, $3, $4, NOW(), NOW() + INTERVAL '1 day')
+        (NULL, 'production', 'queued', $1, $2, $3, NOW(), NOW() + INTERVAL '1 day')
       RETURNING *
-    `, [orderId, qty, departmentId, assignedTo]);
+    `, [qty, departmentId, assignedTo]);
 
     res.status(201).json(jobRows[0]);
   } catch (err) {
