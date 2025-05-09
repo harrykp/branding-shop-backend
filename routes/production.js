@@ -8,35 +8,77 @@ router.get('/', async (req, res) => {
   try {
     const { rows } = await db.query(`
       SELECT
-        j.id,
-        j.deal_id,
-        j.order_id,
-        o.status         AS order_status,
-        j.type,
-        j.qty,
-        j.completed_qty,
-        j.status,
-        j.department_id,
-        d.name           AS department_name,
-        j.assigned_to,
-        u.name           AS assignee_name,
-        j.start_date,
-        j.due_date,
-        j.pushed_from_date,
-        j.started_at,
-        j.finished_at,
-        j.comments,
-        j.updated_by,
-        updater.name     AS updated_by_name,
-        j.updated_at
+        j.id                           AS job_id,
+        de.id                          AS deal_id,
+        de.value                       AS deal_value,
+        cu.id                          AS customer_id,
+        cu.name                        AS customer_name,
+        cu.phone_number                AS customer_phone,
+        p.id                           AS product_id,
+        p.name                         AS product_name,
+        p.sku                          AS product_code,
+        o.id                           AS order_id,
+        o.total                        AS order_total,
+        o.payment_status               AS payment_status,
+
+        j.qty                          AS qty_ordered,
+        j.quantity_completed           AS qty_completed,
+        ROUND(
+          (j.quantity_completed::decimal / NULLIF(j.qty,0)) * 100,
+          2
+        )                              AS pct_complete,
+
+        j.start_date                   AS start_date,
+        j.completion_date              AS completion_date,
+        j.due_date                     AS due_date,
+
+        j.status                       AS job_status,
+        d.name                         AS department,
+        u.name                         AS sales_rep,
+        j.comments                     AS comments,
+
+        COALESCE(pmt.total_paid, 0)    AS completed_value,
+        (o.total - COALESCE(pmt.total_paid, 0)) AS balance_unpaid,
+
+        j.updated_by                   AS updated_by,
+        jb.name                        AS updated_by_name,
+        j.updated_at                   AS updated_at
+
       FROM jobs j
-      LEFT JOIN deals    dl ON dl.id = j.deal_id
-      LEFT JOIN orders   o  ON o.id = j.order_id
-      LEFT JOIN departments d  ON d.id = j.department_id
-      LEFT JOIN users    u  ON u.id = j.assigned_to
-      LEFT JOIN users    updater ON updater.id = j.updated_by
+      LEFT JOIN orders o
+        ON o.id = j.order_id
+
+      LEFT JOIN (
+        SELECT order_id, SUM(amount) AS total_paid
+        FROM payments
+        GROUP BY order_id
+      ) pmt
+        ON pmt.order_id = o.id
+
+      LEFT JOIN quotes q
+        ON q.id = o.quote_id
+
+      LEFT JOIN deals de
+        ON de.quote_id = q.id
+
+      LEFT JOIN products p
+        ON p.id = q.product_id
+
+      LEFT JOIN users cu
+        ON cu.id = q.customer_id
+
+      LEFT JOIN users u
+        ON u.id = j.assigned_to
+
+      LEFT JOIN users jb
+        ON jb.id = j.updated_by
+
+      LEFT JOIN departments d
+        ON d.id = j.department_id
+
       ORDER BY j.due_date ASC, j.id DESC
     `);
+
     res.json(rows);
   } catch (err) {
     console.error('GET /api/jobs error', err);
@@ -47,15 +89,7 @@ router.get('/', async (req, res) => {
 // GET single job
 router.get('/:id', async (req, res) => {
   try {
-    const { rows } = await db.query(
-      `
-      SELECT
-        *
-      FROM jobs
-      WHERE id=$1
-      `,
-      [req.params.id]
-    );
+    const { rows } = await db.query(`SELECT * FROM jobs WHERE id=$1`, [req.params.id]);
     if (!rows[0]) return res.status(404).json({ error: 'Job not found' });
     res.json(rows[0]);
   } catch (err) {
@@ -63,7 +97,6 @@ router.get('/:id', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch job' });
   }
 });
-
 // POST create a job manually
 router.post('/', async (req, res) => {
   const { order_id, type, qty, department_id, assigned_to, due_date } = req.body;
