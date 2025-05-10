@@ -76,7 +76,7 @@ app.use('/api/expenses',          auth, expensesRouter);
 app.use('/api/daily-transactions',auth, dailyTransactionsRouter);
 app.use('/api/taxes',             auth, taxesRouter);
 app.use('/api/reports',           auth, reportsRouter);
-app.use('/api/complaints',        complaintsRouter);
+app.use('/api/complaints',        auth, complaintsRouter);
 
 // -- Report sub-endpoints (all under /api/reports) --
 app.use('/api/reports/sales',    auth, reportsSalesRouter);
