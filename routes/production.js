@@ -10,27 +10,19 @@ router.get('/', async (req, res) => {
       SELECT
         j.id,
         j.order_id,
-        o.status           AS order_status,
+        o.status            AS order_status,
         j.type,
         j.qty,
-        j.status,
-        j.department_id,
-        d.name             AS department_name,
+        j.status            AS job_status,
         j.assigned_to,
-        u.name             AS assignee_name,
+        u.name              AS assignee_name,
         j.start_date,
         j.due_date,
-        j.pushed_from_date,
         j.started_at,
-        j.finished_at,
-        j.completed_qty,
-        j.comments,
-        j.updated_by,
-        j.updated_at
+        j.finished_at
       FROM jobs j
-      LEFT JOIN orders     o ON o.id = j.order_id
-      LEFT JOIN departments d ON d.id = j.department_id
-      LEFT JOIN users      u ON u.id = j.assigned_to
+      LEFT JOIN orders      o ON o.id = j.order_id
+      LEFT JOIN users       u ON u.id = j.assigned_to
       ORDER BY j.due_date ASC, j.id DESC
     `);
     res.json(rows);
@@ -44,7 +36,7 @@ router.get('/', async (req, res) => {
 router.get('/:id', async (req, res) => {
   try {
     const { rows } = await db.query(
-      `SELECT * FROM jobs WHERE id=$1`,
+      `SELECT * FROM jobs WHERE id = $1`,
       [req.params.id]
     );
     if (!rows[0]) return res.status(404).json({ error: 'Job not found' });
@@ -57,17 +49,17 @@ router.get('/:id', async (req, res) => {
 
 // POST create a job
 router.post('/', async (req, res) => {
-  const { order_id, type, qty, department_id, assigned_to, due_date } = req.body;
-  if (!order_id || !type || !qty) {
-    return res.status(400).json({ error: 'Missing order_id, type or qty' });
+  const { order_id, type, qty, assigned_to, due_date } = req.body;
+  if (!type || !qty) {
+    return res.status(400).json({ error: 'Missing type or qty' });
   }
   try {
     const { rows } = await db.query(
       `INSERT INTO jobs
-         (order_id, type, qty, department_id, assigned_to, status, due_date)
-       VALUES ($1,$2,$3,$4,$5,'queued',$6)
+         (order_id, type, qty, assigned_to, status, start_date, due_date)
+       VALUES ($1, $2, $3, $4, 'queued', NOW(), $5)
        RETURNING *`,
-      [ order_id, type, qty, department_id||null, assigned_to||null, due_date||null ]
+      [order_id || null, type, qty, assigned_to || null, due_date || null]
     );
     res.status(201).json(rows[0]);
   } catch (err) {
@@ -78,7 +70,7 @@ router.post('/', async (req, res) => {
 
 // PATCH update job
 router.patch('/:id', async (req, res) => {
-  const updatable = ['status','assigned_to','due_date','pushed_from_date','completed_qty','comments'];
+  const updatable = ['status','assigned_to','due_date','started_at','finished_at'];
   const sets = [], vals = [];
   updatable.forEach(f => {
     if (req.body[f] !== undefined) {
@@ -121,13 +113,11 @@ router.delete('/:id', async (req, res) => {
 });
 
 // ──────────────────────────────────────────────────────────────
-// Push a deal to production (managers & up only)
+// Push a deal to production (by roles)
 // POST /api/jobs/push/:dealId
 router.post('/push/:dealId', async (req, res) => {
   try {
-    const dealId = parseInt(req.params.dealId, 10);
-
-    // 1) Check manager‐level role
+    // 1) Check  roles
     const { rows: userRoles } = await db.query(`
       SELECT r.name
       FROM user_roles ur
@@ -135,49 +125,50 @@ router.post('/push/:dealId', async (req, res) => {
       WHERE ur.user_id = $1
     `, [req.user.id]);
     const roleNames = userRoles.map(r => r.name);
-    const allowed = ['manager','chief_executive','system_admin','super_admin'];
-    if (!roleNames.some(r => allowed.includes(r))) {
+    if (!roleNames.includes('employee') &&
+        !roleNames.includes('sales_rep') &&
+        !roleNames.includes('manager') &&
+        !roleNames.includes('chief_executive') &&
+        !roleNames.includes('system_admin') &&
+        !roleNames.includes('super_admin')) {
       return res.status(403).json({ error: 'Forbidden' });
     }
 
-    // 2) Load deal → get its quote_id & sales rep (assigned_to)
+    // 2) Load the deal and its quote
     const { rows: deals } = await db.query(
-      `SELECT quote_id, assigned_to FROM deals WHERE id = $1`,
-      [dealId]
+      `SELECT id, quote_id, assigned_to
+       FROM deals
+       WHERE id = $1`,
+      [req.params.dealId]
     );
     if (!deals[0]) return res.status(404).json({ error: 'Deal not found' });
-    const { quote_id: quoteId, assigned_to } = deals[0];
+    const deal = deals[0];
 
-    // 3) Find the order that came from that quote
-    const { rows: orders } = await db.query(
-      `SELECT id, department_id FROM orders WHERE quote_id = $1`,
-      [quoteId]
-    );
-    if (!orders[0]) {
-      return res.status(400).json({ error: 'No order found for that quote' });
-    }
-    const orderId      = orders[0].id;
-    const departmentId = orders[0].department_id;
-
-    // 4) Lookup the quote’s quantity
+    // 3) Lookup the quote’s quantity (default 0)
     const { rows: quotes } = await db.query(
-      `SELECT quantity FROM quotes WHERE id = $1`,
-      [quoteId]
+      `SELECT quantity
+       FROM quotes
+       WHERE id = $1`,
+      [deal.quote_id]
     );
     const qty = quotes[0]?.quantity || 0;
 
-    // 5) Insert the new production job
+    // 4) Define insert values
+    const orderId    = null;               // no order
+    const assignedTo = deal.assigned_to    // use deal’s assignee
+                      || req.user.id;      // or fallback to current user
+
+    // 5) Insert into jobs table (no department_id)
     const { rows: jobRows } = await db.query(`
       INSERT INTO jobs
-        (order_id, type, status, qty, department_id, assigned_to, start_date, due_date)
+        (order_id, type, qty, assigned_to, start_date, due_date, status)
       VALUES
-        ($1, 'production', 'queued', $2, $3, $4, NOW(), NOW() + INTERVAL '1 day')
+        ($1, 'production', $2, $3, NOW(), NOW() + INTERVAL '1 day', 'queued')
       RETURNING *
     `, [
-      orderId,        // $1
-      qty,            // $2
-      departmentId,   // $3
-      assigned_to     // $4
+      orderId,
+      qty,
+      assignedTo
     ]);
 
     res.status(201).json(jobRows[0]);
