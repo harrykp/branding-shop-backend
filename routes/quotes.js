@@ -1,7 +1,7 @@
 // branding-shop-backend/routes/quotes.js
 
 const router = require('express').Router();
-const db     = require('../db');
+const db = require('../db');
 
 // GET all quotes
 router.get('/', async (req, res) => {
@@ -55,7 +55,9 @@ router.get('/:id', async (req, res) => {
        WHERE q.id = $1`,
       [req.params.id]
     );
-    if (!rows[0]) return res.status(404).json({ error: 'Quote not found' });
+    if (!rows[0]) {
+      return res.status(404).json({ error: 'Quote not found' });
+    }
     res.json(rows[0]);
   } catch (err) {
     console.error(`GET /api/quotes/${req.params.id} error`, err);
@@ -63,7 +65,7 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// POST create new quote (by product)
+// POST create new quote (calculates pricing server-side)
 router.post('/', async (req, res) => {
   const customer_id = req.user.id;
   const { product_id, quantity } = req.body;
@@ -73,46 +75,48 @@ router.post('/', async (req, res) => {
   }
 
   try {
-// 1) lookup base product price + category
-const prodRes = await db.query(
-  `SELECT price, category_id
-     FROM products
-    WHERE id = $1`,
-  [product_id]
-);
-if (!prodRes.rows[0]) {
-  return res.status(400).json({ error: `Invalid product_id=${product_id}` });
-}
-let unitPrice = parseFloat(prodRes.rows[0].price);
-const categoryId = prodRes.rows[0].category_id;
+    // 1) Lookup product base price and category
+    const prodRes = await db.query(
+      `SELECT price, category_id
+         FROM products
+        WHERE id = $1`,
+      [product_id]
+    );
+    if (!prodRes.rows[0]) {
+      return res.status(400).json({ error: `Invalid product_id=${product_id}` });
+    }
+    let unitPrice = parseFloat(prodRes.rows[0].price);
+    const categoryId = prodRes.rows[0].category_id;
 
-// 2) fetch any matching pricing rules (category‐specific OR global)
-const rulesRes = await db.query(
-  `SELECT rule_type, unit_price AS rule_val
-     FROM pricing_rules
-    WHERE (product_category_id IS NULL OR product_category_id = $1)
-      AND $2 >= min_qty
-      AND ( $2 <= max_qty OR max_qty IS NULL )`,
-  [categoryId, quantity]
-);
+    // 2) Fetch matching pricing rules
+    const rulesRes = await db.query(
+      `SELECT rule_type, unit_price AS rule_val
+         FROM pricing_rules
+        WHERE (product_category_id IS NULL OR product_category_id = $1)
+          AND $2 >= min_qty
+          AND ( $2 <= max_qty OR max_qty IS NULL )`,
+      [categoryId, quantity]
+    );
 
-// 3) apply each matching rule in turn
-for (const { rule_type, rule_val } of rulesRes.rows) {
-  const pct = parseFloat(rule_val);
-  if (rule_type === 'surcharge_pct') {
-    // e.g. pct = 1.0 means +100% → double price
-    unitPrice = unitPrice * (1 + pct);
-  } else if (rule_type === 'discount_pct') {
-    // e.g. pct = 0.02 means 2% off
-    unitPrice = unitPrice * (1 - pct);
-  }
-}
+    // 3) Apply each pricing rule
+    for (const { rule_type, rule_val } of rulesRes.rows) {
+      const val = parseFloat(rule_val);
+      if (rule_type === 'surcharge_pct') {
+        unitPrice *= (1 + val);
+      } else if (rule_type === 'discount_pct') {
+        unitPrice *= (1 - val);
+      } else if (rule_type === 'fixed') {
+        unitPrice = val;
+      } else if (rule_type === 'markup_fixed') {
+        unitPrice += val;
+      }
+    }
 
-// 4) compute total
-const total = unitPrice * parseInt(quantity, 10);
+    // 4) Compute total
+    const total = unitPrice * parseInt(quantity, 10);
 
-    // insert the quote
-    const { rows } = await db.query(
+    // 5) Insert quote
+    const insertRes = await db.query(
       `INSERT INTO quotes
          (customer_id, product_id, quantity, unit_price, total, status)
        VALUES ($1, $2, $3, $4, $5, 'pending')
@@ -128,39 +132,27 @@ const total = unitPrice * parseInt(quantity, 10);
       [customer_id, product_id, quantity, unitPrice, total]
     );
 
-    res.status(201).json(rows[0]);
+    res.status(201).json(insertRes.rows[0]);
   } catch (err) {
     console.error('POST /api/quotes error', err);
-    res.status(500).json({ error: err.message || 'Failed to create quote' });
+    res.status(500).json({ error: 'Failed to create quote' });
   }
 });
 
-// PATCH update quote (status only)
+// PATCH update quote status
 router.patch('/:id', async (req, res) => {
-  const fields = ['status'];
-  const sets   = [];
-  const vals   = [];
-
-  fields.forEach(field => {
-    if (req.body[field] !== undefined) {
-      sets.push(`${field} = $${sets.length + 1}`);
-      vals.push(req.body[field]);
-    }
-  });
-
-  if (!sets.length) {
-    return res.status(400).json({ error: 'No updatable fields' });
+  const { status } = req.body;
+  if (!status) {
+    return res.status(400).json({ error: 'Missing status field' });
   }
-
-  vals.push(req.params.id);
 
   try {
     const { rows } = await db.query(
       `UPDATE quotes
-       SET ${sets.join(', ')}
-       WHERE id = $${vals.length}
+         SET status = $1, updated_at = now()
+       WHERE id = $2
        RETURNING id, status`,
-      vals
+      [status, req.params.id]
     );
     if (!rows[0]) {
       return res.status(404).json({ error: 'Quote not found' });
