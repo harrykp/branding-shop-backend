@@ -5,28 +5,25 @@ const db     = require('../db');
 
 /**
  * GET /api/jobs
- * Supports pagination, sorting, and optional filtering on job_status.
- * Query params:
- *   page (default 1), limit (default 20)
- *   sort_by (due_date|id|start_date), sort_dir (ASC|DESC)
- *   status (queued|in_progress|finished|cancelled)
+ * Supports pagination, sorting, and optional filtering by job_status via query params.
+ * Returns a plain array of job objects.
  */
 router.get('/', async (req, res) => {
   try {
     // parse query params
-    const page     = Math.max(1, parseInt(req.query.page, 10) || 1);
-    const limit    = Math.max(1, parseInt(req.query.limit, 10) || 20);
-    let sortBy     = req.query.sort_by || 'due_date';
-    let sortDir    = (req.query.sort_dir || 'ASC').toUpperCase();
-    const status   = req.query.status;
+    const page   = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit  = Math.max(1, parseInt(req.query.limit, 10) || 20);
+    let sortBy   = req.query.sort_by || 'due_date';
+    let sortDir  = (req.query.sort_dir || 'ASC').toUpperCase();
+    const status = req.query.status;
 
-    const allowedSort = ['due_date','id','start_date'];
+    const allowedSort = ['due_date', 'id', 'start_date'];
     if (!allowedSort.includes(sortBy)) sortBy = 'due_date';
-    if (!['ASC','DESC'].includes(sortDir)) sortDir = 'ASC';
+    if (!['ASC', 'DESC'].includes(sortDir)) sortDir = 'ASC';
 
     const offset = (page - 1) * limit;
 
-    // build WHERE clause for status filter
+    // if filtering by status, include WHERE
     const statusClause = status ? 'WHERE j.status = $3' : '';
     const params = status ? [limit, offset, status] : [limit, offset];
 
@@ -34,33 +31,31 @@ router.get('/', async (req, res) => {
       SELECT
         j.id,
         j.deal_id,
-        d.value                AS deal_value,
+        d.value                     AS deal_value,
         j.order_id,
-        ord.user_id            AS customer_id,
-        cust.name              AS customer_name,
-        cust.phone_number      AS customer_phone,
-        ord.total              AS order_total,
+        ord.user_id                 AS customer_id,
+        cust.name                   AS customer_name,
+        cust.phone_number           AS customer_phone,
+        ord.total                   AS order_total,
         ord.payment_status,
         q.product_id,
-        prd.name               AS product_name,
-        prd.sku                AS product_code,
-        j.qty                  AS qty_ordered,
-        j.completed_qty        AS qty_completed,
+        prd.name                    AS product_name,
+        prd.sku                     AS product_code,
+        j.qty                       AS qty_ordered,
+        j.completed_qty             AS qty_completed,
         ROUND(
-          CASE WHEN j.qty>0
-               THEN (j.completed_qty::numeric/j.qty)*100
-               ELSE 0 END
-        ,2)                    AS pct_complete,
+          CASE WHEN j.qty>0 THEN (j.completed_qty::numeric/j.qty)*100 ELSE 0 END
+        ,2)                          AS pct_complete,
         j.start_date,
         j.due_date,
         j.started_at,
         j.finished_at,
         j.comments,
-        upd.name               AS updated_by_name,
+        upd.name                    AS updated_by_name,
         j.updated_at,
-        j.status               AS job_status,
+        j.status                    AS job_status,
         j.assigned_to,
-        assignee.name          AS assignee_name,
+        assignee.name               AS assignee_name,
         ROUND((j.completed_qty::numeric * (ord.total/NULLIF(q.quantity,0))),2) AS completed_value,
         ROUND((ord.total - (j.completed_qty::numeric * (ord.total/NULLIF(q.quantity,0)))),2) AS balance_unpaid
       FROM jobs j
@@ -77,7 +72,7 @@ router.get('/', async (req, res) => {
     `;
 
     const { rows } = await db.query(sql, params);
-    res.json({ page, limit, jobs: rows });
+    res.json(rows);
   } catch (err) {
     console.error('GET /api/jobs error', err);
     res.status(500).json({ error: 'Failed to fetch jobs' });
@@ -94,33 +89,31 @@ router.get('/:id', async (req, res) => {
       `SELECT
          j.id,
          j.deal_id,
-         d.value          AS deal_value,
+         d.value                    AS deal_value,
          j.order_id,
-         ord.user_id      AS customer_id,
-         cust.name        AS customer_name,
-         cust.phone_number AS customer_phone,
-         ord.total        AS order_total,
+         ord.user_id                AS customer_id,
+         cust.name                  AS customer_name,
+         cust.phone_number          AS customer_phone,
+         ord.total                  AS order_total,
          ord.payment_status,
          q.product_id,
-         prd.name         AS product_name,
-         prd.sku          AS product_code,
-         j.qty            AS qty_ordered,
-         j.completed_qty  AS qty_completed,
+         prd.name                   AS product_name,
+         prd.sku                    AS product_code,
+         j.qty                      AS qty_ordered,
+         j.completed_qty            AS qty_completed,
          ROUND(
-           CASE WHEN j.qty>0
-                THEN (j.completed_qty::numeric/j.qty)*100
-                ELSE 0 END
-         ,2)              AS pct_complete,
+           CASE WHEN j.qty>0 THEN (j.completed_qty::numeric/j.qty)*100 ELSE 0 END
+         ,2)                          AS pct_complete,
          j.start_date,
          j.due_date,
          j.started_at,
          j.finished_at,
          j.comments,
-         upd.name         AS updated_by_name,
+         upd.name                    AS updated_by_name,
          j.updated_at,
-         j.status         AS job_status,
+         j.status                    AS job_status,
          j.assigned_to,
-         assignee.name    AS assignee_name,
+         assignee.name               AS assignee_name,
          ROUND((j.completed_qty::numeric * (ord.total/NULLIF(q.quantity,0))),2) AS completed_value,
          ROUND((ord.total - (j.completed_qty::numeric * (ord.total/NULLIF(q.quantity,0)))),2) AS balance_unpaid
        FROM jobs j
@@ -200,7 +193,6 @@ router.patch('/:id', async (req, res) => {
 
 /**
  * DELETE /api/jobs/:id
- * Remove a job
  */
 router.delete('/:id', async (req, res) => {
   try {
@@ -215,12 +207,14 @@ router.delete('/:id', async (req, res) => {
 
 /**
  * POST /api/jobs/push/:dealId
- * Push a deal into production
  */
 router.post('/push/:dealId', async (req, res) => {
   try {
-    // role check omitted for brevity; assume auth middleware handles it
-    const { rows: deals } = await db.query(`SELECT id, quote_id, assigned_to FROM deals WHERE id=$1`, [req.params.dealId]);
+    // assume auth middleware ensures valid user
+    const { rows: deals } = await db.query(
+      `SELECT id, quote_id, assigned_to FROM deals WHERE id=$1`,
+      [req.params.dealId]
+    );
     if (!deals[0]) return res.status(404).json({ error: 'Deal not found' });
     const deal = deals[0];
     const { rows: q } = await db.query(`SELECT quantity FROM quotes WHERE id=$1`, [deal.quote_id]);
