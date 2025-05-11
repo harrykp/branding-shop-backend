@@ -1,7 +1,14 @@
 // branding-shop-backend/routes/payments.js
 
 const router = require('express').Router();
-const db     = require('../db');
+const db = require('../db');
+const { Pool } = require('pg');
+
+// Create a dedicated pool so we can get a client for transactions
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : undefined
+});
 
 // GET all payments (for admin)
 router.get('/', async (req, res) => {
@@ -32,14 +39,11 @@ router.get('/', async (req, res) => {
 router.post('/', async (req, res) => {
   const { order_id, amount, gateway } = req.body;
   if (!order_id || !amount || !gateway) {
-    return res.status(400).json({
-      error: 'Missing required fields: order_id, amount, gateway'
-    });
+    return res.status(400).json({ error: 'Missing required fields: order_id, amount, gateway' });
   }
 
-  let client;
+  const client = await pool.connect();
   try {
-    client = await db.connect();
     await client.query('BEGIN');
 
     // 1) Insert the payment record
@@ -57,9 +61,7 @@ router.post('/', async (req, res) => {
       `SELECT quote_id FROM orders WHERE id = $1`,
       [order_id]
     );
-    if (!orderRes.rows[0]) {
-      throw new Error(`Order ${order_id} not found`);
-    }
+    if (!orderRes.rows[0]) throw new Error(`Order ${order_id} not found`);
     const quoteId = orderRes.rows[0].quote_id;
 
     // 3) Fetch quantity from quotes
@@ -91,11 +93,11 @@ router.post('/', async (req, res) => {
     await client.query('COMMIT');
     res.status(201).json({ payment, job });
   } catch (err) {
-    if (client) await client.query('ROLLBACK');
+    await client.query('ROLLBACK');
     console.error('POST /api/payments error', err);
     res.status(500).json({ error: err.message || 'Failed to record payment' });
   } finally {
-    if (client) client.release();
+    client.release();
   }
 });
 
