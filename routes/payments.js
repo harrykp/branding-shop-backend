@@ -28,17 +28,18 @@ router.get('/', async (req, res) => {
   }
 });
 
-// POST capture a payment and auto‐create a production job
+// POST capture a payment and auto-create a production job
 router.post('/', async (req, res) => {
   const { order_id, amount, gateway } = req.body;
   if (!order_id || !amount || !gateway) {
-    return res
-      .status(400)
-      .json({ error: 'Missing required fields: order_id, amount, gateway' });
+    return res.status(400).json({
+      error: 'Missing required fields: order_id, amount, gateway'
+    });
   }
 
-  const client = await db.connect();
+  let client;
   try {
+    client = await db.connect();
     await client.query('BEGIN');
 
     // 1) Insert the payment record
@@ -56,7 +57,9 @@ router.post('/', async (req, res) => {
       `SELECT quote_id FROM orders WHERE id = $1`,
       [order_id]
     );
-    if (!orderRes.rows[0]) throw new Error(`Order ${order_id} not found`);
+    if (!orderRes.rows[0]) {
+      throw new Error(`Order ${order_id} not found`);
+    }
     const quoteId = orderRes.rows[0].quote_id;
 
     // 3) Fetch quantity from quotes
@@ -66,7 +69,7 @@ router.post('/', async (req, res) => {
     );
     const qty = quoteRes.rows[0]?.quantity || 0;
 
-    // 4) Attempt to fetch deal info for this quote (if any)
+    // 4) Fetch deal info for this quote (if any)
     const dealRes = await client.query(
       `SELECT id AS deal_id, assigned_to FROM deals WHERE quote_id = $1`,
       [quoteId]
@@ -88,11 +91,11 @@ router.post('/', async (req, res) => {
     await client.query('COMMIT');
     res.status(201).json({ payment, job });
   } catch (err) {
-    await client.query('ROLLBACK');
+    if (client) await client.query('ROLLBACK');
     console.error('POST /api/payments error', err);
     res.status(500).json({ error: err.message || 'Failed to record payment' });
   } finally {
-    client.release();
+    if (client) client.release();
   }
 });
 
