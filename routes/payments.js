@@ -15,8 +15,8 @@ router.get('/', async (req, res) => {
         p.status,
         p.paid_at,
         p.created_at,
-        j.id   AS job_id,
-        j.status AS job_status
+        j.id          AS job_id,
+        j.status      AS job_status
       FROM payments p
       LEFT JOIN jobs j ON j.order_id = p.order_id
       ORDER BY p.created_at DESC
@@ -51,38 +51,41 @@ router.post('/', async (req, res) => {
     );
     const payment = payRes.rows[0];
 
-    // 2) Fetch associated quote quantity (via orders → quotes)
+    // 2) Fetch associated quote_id from orders
     const orderRes = await client.query(
-      `SELECT quote_id
-         FROM orders
-        WHERE id = $1`,
+      `SELECT quote_id FROM orders WHERE id = $1`,
       [order_id]
     );
-    if (!orderRes.rows[0]) {
-      throw new Error(`Order ${order_id} not found`);
-    }
+    if (!orderRes.rows[0]) throw new Error(`Order ${order_id} not found`);
     const quoteId = orderRes.rows[0].quote_id;
 
+    // 3) Fetch quantity from quotes
     const quoteRes = await client.query(
-      `SELECT quantity
-         FROM quotes
-        WHERE id = $1`,
+      `SELECT quantity FROM quotes WHERE id = $1`,
       [quoteId]
     );
     const qty = quoteRes.rows[0]?.quantity || 0;
 
-    // 3) Create a production job for that order
+    // 4) Attempt to fetch deal info for this quote (if any)
+    const dealRes = await client.query(
+      `SELECT id AS deal_id, assigned_to FROM deals WHERE quote_id = $1`,
+      [quoteId]
+    );
+    const deal = dealRes.rows[0] || {};
+    const dealId = deal.deal_id || null;
+    const assignedTo = deal.assigned_to || null;
+
+    // 5) Insert a production job
     const jobRes = await client.query(
       `INSERT INTO jobs
-         (order_id, type, qty, status, start_date, due_date)
-       VALUES ($1, 'production', $2, 'queued', now(), now() + INTERVAL '1 day')
-       RETURNING id, order_id, type, qty, status, start_date, due_date`,
-      [order_id, qty]
+         (order_id, deal_id, type, qty, assigned_to, status, start_date, due_date)
+       VALUES ($1, $2, 'production', $3, $4, 'queued', now(), now() + INTERVAL '1 day')
+       RETURNING *`,
+      [order_id, dealId, qty, assignedTo]
     );
     const job = jobRes.rows[0];
 
     await client.query('COMMIT');
-
     res.status(201).json({ payment, job });
   } catch (err) {
     await client.query('ROLLBACK');
