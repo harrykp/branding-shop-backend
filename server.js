@@ -6,8 +6,12 @@ require('dotenv').config();
 
 const app = express();
 
-// Allow all origins so your GitHub Pages frontend (and any other client) can communicate
-app.use(cors());
+// This will guarantee the browser sees the right Access-Control-Allow-Headers
+app.use(cors({
+  origin: '*',
+  methods: ['GET','POST','PATCH','DELETE','OPTIONS'],
+  allowedHeaders: ['Content-Type','Authorization']
+}));
 app.use(express.json());
 
 // JWT auth middleware
