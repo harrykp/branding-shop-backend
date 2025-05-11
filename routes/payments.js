@@ -1,10 +1,10 @@
 // branding-shop-backend/routes/payments.js
 
 const router = require('express').Router();
-const db = require('../db');
+const db     = require('../db');
 const { Pool } = require('pg');
 
-// Create a dedicated pool so we can get a client for transactions
+// Create a dedicated pool for transactional operations
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : undefined
@@ -35,11 +35,13 @@ router.get('/', async (req, res) => {
   }
 });
 
-// POST capture a payment and auto-create a production job
+// POST capture a payment, mark order paid, and auto-create a production job
 router.post('/', async (req, res) => {
   const { order_id, amount, gateway } = req.body;
   if (!order_id || !amount || !gateway) {
-    return res.status(400).json({ error: 'Missing required fields: order_id, amount, gateway' });
+    return res.status(400).json({
+      error: 'Missing required fields: order_id, amount, gateway'
+    });
   }
 
   const client = await pool.connect();
@@ -56,22 +58,32 @@ router.post('/', async (req, res) => {
     );
     const payment = payRes.rows[0];
 
-    // 2) Fetch associated quote_id from orders
+    // 2) Mark the order as paid
+    await client.query(
+      `UPDATE orders
+         SET payment_status = 'paid'
+       WHERE id = $1`,
+      [order_id]
+    );
+
+    // 3) Fetch associated quote_id from orders
     const orderRes = await client.query(
       `SELECT quote_id FROM orders WHERE id = $1`,
       [order_id]
     );
-    if (!orderRes.rows[0]) throw new Error(`Order ${order_id} not found`);
+    if (!orderRes.rows[0]) {
+      throw new Error(`Order ${order_id} not found`);
+    }
     const quoteId = orderRes.rows[0].quote_id;
 
-    // 3) Fetch quantity from quotes
+    // 4) Fetch quantity from quotes
     const quoteRes = await client.query(
       `SELECT quantity FROM quotes WHERE id = $1`,
       [quoteId]
     );
     const qty = quoteRes.rows[0]?.quantity || 0;
 
-    // 4) Fetch deal info for this quote (if any)
+    // 5) Fetch deal info for this quote (if any)
     const dealRes = await client.query(
       `SELECT id AS deal_id, assigned_to FROM deals WHERE quote_id = $1`,
       [quoteId]
@@ -80,7 +92,7 @@ router.post('/', async (req, res) => {
     const dealId = deal.deal_id || null;
     const assignedTo = deal.assigned_to || null;
 
-    // 5) Insert a production job
+    // 6) Insert a production job
     const jobRes = await client.query(
       `INSERT INTO jobs
          (order_id, deal_id, type, qty, assigned_to, status, start_date, due_date)
