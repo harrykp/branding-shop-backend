@@ -10,9 +10,9 @@ router.get('/', async (req, res) => {
       SELECT 
         o.id,
         o.quote_id,
-        o.user_id            AS customer_id,
-        u.name               AS customer_name,
-        u.phone_number       AS customer_phone,
+        o.user_id          AS customer_id,
+        u.name             AS customer_name,
+        u.phone_number     AS customer_phone,
         o.total,
         o.status,
         o.placed_at,
@@ -77,14 +77,7 @@ router.post('/', async (req, res) => {
       `INSERT INTO orders
          (quote_id, user_id, total, status, payment_status)
        VALUES ($1, $2, $3, 'new', 'pending')
-       RETURNING
-         id,
-         quote_id,
-         user_id        AS customer_id,
-         total,
-         status,
-         placed_at,
-         payment_status`,
+       RETURNING id, quote_id, user_id AS customer_id, total, status, placed_at, payment_status`,
       [quote_id, quote.customer_id, quote.total]
     );
     const order = orows[0];
@@ -127,14 +120,7 @@ router.patch('/:id', async (req, res) => {
       `UPDATE orders
        SET ${sets.join(', ')}
        WHERE id = $${vals.length}
-       RETURNING
-         id,
-         quote_id,
-         user_id        AS customer_id,
-         total,
-         status,
-         placed_at,
-         payment_status`,
+       RETURNING id, quote_id, user_id AS customer_id, total, status, placed_at, payment_status`,
       vals
     );
     if (!rows[0]) {
