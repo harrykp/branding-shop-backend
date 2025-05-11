@@ -3,23 +3,40 @@
 const router = require('express').Router();
 const db     = require('../db');
 
-// GET all orders
+// GET all orders (for admin or per-user)
 router.get('/', async (req, res) => {
   try {
-    const { rows } = await db.query(`
-      SELECT 
-        o.id,
-        o.quote_id,
-        o.user_id            AS customer_id,
-        u.name               AS customer_name,
-        o.total,
-        o.status,
-        o.placed_at,
-        o.payment_status
-      FROM orders o
-      JOIN users u ON u.id = o.user_id
-      ORDER BY o.placed_at DESC
-    `);
+    // determine if user is admin
+    const isAdmin = req.user.roles && req.user.roles.includes('super_admin');
+    const userId  = req.user.id;
+
+    const sql = isAdmin
+      ? `SELECT
+           o.id,
+           o.customer_id,
+           u.name       AS customer_name,
+           o.quote_id,
+           o.total,
+           o.status,
+           o.payment_status,
+           o.placed_at
+         FROM orders o
+         JOIN users u ON u.id = o.customer_id
+         ORDER BY o.placed_at DESC`
+      : `SELECT
+           o.id,
+           o.customer_id,
+           o.quote_id,
+           o.total,
+           o.status,
+           o.payment_status,
+           o.placed_at
+         FROM orders o
+         WHERE o.customer_id = $1
+         ORDER BY o.placed_at DESC`;
+    const params = isAdmin ? [] : [userId];
+
+    const { rows } = await db.query(sql, params);
     res.json(rows);
   } catch (err) {
     console.error('GET /api/orders error', err);
@@ -27,34 +44,12 @@ router.get('/', async (req, res) => {
   }
 });
 
-// GET single order
-router.get('/:id', async (req, res) => {
-  try {
-    const { rows } = await db.query(`
-      SELECT
-        id,
-        quote_id,
-        user_id          AS customer_id,
-        total,
-        status,
-        placed_at,
-        payment_status
-      FROM orders
-      WHERE id = $1
-    `, [req.params.id]);
-    if (!rows[0]) return res.status(404).json({ error: 'Order not found' });
-    res.json(rows[0]);
-  } catch (err) {
-    console.error(`GET /api/orders/${req.params.id} error`, err);
-    res.status(500).json({ error: 'Failed to fetch order' });
-  }
-});
-
-// POST create new order (from quote)
+// POST convert a quote into a new order
 router.post('/', async (req, res) => {
+  const customer_id = req.user.id;
   const { quote_id } = req.body;
   if (!quote_id) {
-    return res.status(400).json({ error: 'Missing quote_id' });
+    return res.status(400).json({ error: 'Missing required field: quote_id' });
   }
 
   try {
@@ -74,8 +69,8 @@ router.post('/', async (req, res) => {
     // insert order
     const { rows: orows } = await db.query(
       `INSERT INTO orders
-         (quote_id, user_id, total, status, payment_status)
-       VALUES ($1, $2, $3, 'new', 'pending')
+         (quote_id, user_id, total, status, payment_status, placed_at)
+       VALUES ($1, $2, $3, 'new', 'pending', NOW())
        RETURNING id, quote_id, user_id AS customer_id, total, status, placed_at, payment_status`,
       [quote_id, quote.customer_id, quote.total]
     );
