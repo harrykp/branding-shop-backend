@@ -6,41 +6,74 @@ const db     = require('../db');
 // GET all orders (for admin or per-user)
 router.get('/', async (req, res) => {
   try {
-    // determine if user is admin
     const isAdmin = req.user.roles && req.user.roles.includes('super_admin');
     const userId  = req.user.id;
+    let query, params;
 
-    const sql = isAdmin
-      ? `SELECT
-           o.id,
-           o.customer_id,
-           u.name       AS customer_name,
-           o.quote_id,
-           o.total,
-           o.status,
-           o.payment_status,
-           o.placed_at
-         FROM orders o
-         JOIN users u ON u.id = o.customer_id
-         ORDER BY o.placed_at DESC`
-      : `SELECT
-           o.id,
-           o.customer_id,
-           o.quote_id,
-           o.total,
-           o.status,
-           o.payment_status,
-           o.placed_at
-         FROM orders o
-         WHERE o.customer_id = $1
-         ORDER BY o.placed_at DESC`;
-    const params = isAdmin ? [] : [userId];
+    if (isAdmin) {
+      query = `
+        SELECT
+          o.id,
+          o.user_id          AS customer_id,
+          u.name             AS customer_name,
+          o.quote_id,
+          o.total,
+          o.status,
+          o.payment_status,
+          o.placed_at
+        FROM orders o
+        JOIN users u ON u.id = o.user_id
+        ORDER BY o.placed_at DESC
+      `;
+      params = [];
+    } else {
+      query = `
+        SELECT
+          o.id,
+          o.user_id          AS customer_id,
+          o.quote_id,
+          o.total,
+          o.status,
+          o.payment_status,
+          o.placed_at
+        FROM orders o
+        WHERE o.user_id = $1
+        ORDER BY o.placed_at DESC
+      `;
+      params = [userId];
+    }
 
-    const { rows } = await db.query(sql, params);
+    const { rows } = await db.query(query, params);
     res.json(rows);
   } catch (err) {
     console.error('GET /api/orders error', err);
     res.status(500).json({ error: 'Failed to fetch orders' });
+  }
+});
+
+// GET single order
+router.get('/:id', async (req, res) => {
+  try {
+    const { rows } = await db.query(
+      `
+      SELECT
+        id,
+        quote_id,
+        user_id          AS customer_id,
+        total,
+        status,
+        placed_at,
+        payment_status
+      FROM orders
+      WHERE id = $1
+      `,
+      [req.params.id]
+    );
+    if (!rows[0]) return res.status(404).json({ error: 'Order not found' });
+    res.json(rows[0]);
+  } catch (err) {
+    console.error(`GET /api/orders/${req.params.id} error`, err);
+    res.status(500).json({ error: 'Failed to fetch order' });
   }
 });
 
@@ -49,16 +82,16 @@ router.post('/', async (req, res) => {
   const customer_id = req.user.id;
   const { quote_id } = req.body;
   if (!quote_id) {
-    return res.status(400).json({ error: 'Missing required field: quote_id' });
+    return res.status(400).json({ error: 'Missing quote_id' });
   }
 
   try {
     // lock & fetch the quote
-    const { rows: qrows } = await db.query(
+    const quoteRes = await db.query(
       `SELECT * FROM quotes WHERE id = $1 FOR UPDATE`,
       [quote_id]
     );
-    const quote = qrows[0];
+    const quote = quoteRes.rows[0];
     if (!quote) {
       return res.status(404).json({ error: 'Quote not found' });
     }
@@ -67,14 +100,16 @@ router.post('/', async (req, res) => {
     }
 
     // insert order
-    const { rows: orows } = await db.query(
-      `INSERT INTO orders
-         (quote_id, user_id, total, status, payment_status, placed_at)
-       VALUES ($1, $2, $3, 'new', 'pending', NOW())
-       RETURNING id, quote_id, user_id AS customer_id, total, status, placed_at, payment_status`,
-      [quote_id, quote.customer_id, quote.total]
+    const insertRes = await db.query(
+      `
+      INSERT INTO orders
+        (quote_id, user_id, total, status, payment_status, placed_at)
+      VALUES ($1, $2, $3, 'new', 'pending', NOW())
+      RETURNING id, quote_id, user_id AS customer_id, total, status, placed_at, payment_status
+      `,
+      [quote_id, customer_id, quote.total]
     );
-    const order = orows[0];
+    const order = insertRes.rows[0];
 
     // mark quote as converted
     await db.query(
@@ -93,12 +128,12 @@ router.post('/', async (req, res) => {
 router.patch('/:id', async (req, res) => {
   const allowed = ['quote_id','user_id','total','status','payment_status'];
   const sets = [];
-  const vals = [];
+  const values = [];
 
   allowed.forEach(field => {
     if (req.body[field] !== undefined) {
       sets.push(`${field} = $${sets.length + 1}`);
-      vals.push(req.body[field]);
+      values.push(req.body[field]);
     }
   });
 
@@ -106,16 +141,17 @@ router.patch('/:id', async (req, res) => {
     return res.status(400).json({ error: 'No updatable fields' });
   }
 
-  // add id for WHERE
-  vals.push(req.params.id);
+  values.push(req.params.id);
 
   try {
     const { rows } = await db.query(
-      `UPDATE orders
-       SET ${sets.join(', ')}
-       WHERE id = $${vals.length}
-       RETURNING id, quote_id, user_id AS customer_id, total, status, placed_at, payment_status`,
-      vals
+      `
+      UPDATE orders
+      SET ${sets.join(', ')}
+      WHERE id = $${values.length}
+      RETURNING id, quote_id, user_id AS customer_id, total, status, placed_at, payment_status
+      `,
+      values
     );
     if (!rows[0]) {
       return res.status(404).json({ error: 'Order not found' });
