@@ -44,7 +44,7 @@ const dailyTransactionsRouter  = require('./routes/transactions');
 const taxesRouter              = require('./routes/taxes');
 const reportsRouter            = require('./routes/reports');
 const complaintsRouter         = require('./routes/complaints');
-
+const cartRouter               = require('./routes/cart');
 
 const reportsSalesRouter       = require('./routes/reports_sales');
 const reportsFinanceRouter     = require('./routes/reports_finance');
@@ -81,6 +81,7 @@ app.use('/api/daily-transactions',auth, dailyTransactionsRouter);
 app.use('/api/taxes',             auth, taxesRouter);
 app.use('/api/reports',           auth, reportsRouter);
 app.use('/api/complaints',        auth, complaintsRouter);
+app.use('/api/cart',              auth, cartRouter);
 
 // -- Report sub-endpoints (all under /api/reports) --
 app.use('/api/reports/sales',    auth, reportsSalesRouter);
