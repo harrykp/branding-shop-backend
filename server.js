@@ -15,8 +15,11 @@ app.use(cors({
 }));
 app.use(express.json());
 
-// serve everything in /public as static assets
-app.use(express.static(path.join(__dirname, '../public')));
+// 1) Serve your storefront under /store
+app.use('/store', express.static(path.join(__dirname, 'public')));
+
+// 2) Serve your existing user-portal at the project root
+app.use('/', express.static(path.join(__dirname))); );
 
 
 // JWT auth middleware
