@@ -15,8 +15,9 @@ app.use(cors({
 }));
 app.use(express.json());
 
-// 1) Serve your storefront under /store
-app.use('/store', express.static(path.join(__dirname, 'public')));
+
+// serve anything under /store from ./store
+app.use('/store', express.static(path.join(__dirname, 'store')));
 
 // 2) Serve your existing user-portal at the project root
 app.use('/', express.static(path.join(__dirname))); );
