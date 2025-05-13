@@ -14,6 +14,10 @@ app.use(cors({
 }));
 app.use(express.json());
 
+// serve everything in /public as static assets
+app.use(express.static(path.join(__dirname, '../public')));
+
+
 // JWT auth middleware
 const auth = require('./middleware/auth');
 
