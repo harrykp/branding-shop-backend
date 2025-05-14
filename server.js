@@ -20,7 +20,7 @@ app.use(express.json());
 app.use('/store', express.static(path.join(__dirname, 'store')));
 
 // 2) Serve your existing user-portal at the project root
-app.use('/', express.static(path.join(__dirname))); );
+app.use('/', express.static(path.join(__dirname)));
 
 
 // JWT auth middleware
