@@ -147,24 +147,37 @@ router.post('/reset-password', async (req, res) => {
 
 // POST /api/auth/reset-password/confirm
 router.post('/reset-password/confirm', async (req, res) => {
-  const { email, token, newPassword } = req.body;
+  const { email, token, newPassword, security_answer } = req.body;
 
+  // Find user with matching token + email
   const { rows } = await db.query(
     'SELECT * FROM users WHERE email = $1 AND reset_token = $2 AND reset_token_expiry > $3',
     [email, token, Date.now()]
   );
 
   const user = rows[0];
-  if (!user) return res.status(400).json({ message: "Invalid or expired token." });
+  if (!user) {
+    return res.status(400).json({ message: "Invalid or expired reset token." });
+  }
 
+  // Check security answer
+  const validAnswer = await bcrypt.compare(security_answer, user.security_answer_hash);
+  if (!validAnswer) {
+    return res.status(403).json({ message: "Incorrect answer to the security question." });
+  }
+
+  // Hash new password
   const hashed = await bcrypt.hash(newPassword, 10);
+
+  // Update password and clear reset token
   await db.query(
     'UPDATE users SET password_hash = $1, reset_token = NULL, reset_token_expiry = NULL WHERE id = $2',
     [hashed, user.id]
   );
 
-  res.status(200).json({ message: "Password successfully reset. Please log in." });
+  res.status(200).json({ message: "Password successfully reset. You can now log in." });
 });
+
 
 
 module.exports = router;
