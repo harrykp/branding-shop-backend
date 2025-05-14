@@ -110,7 +110,19 @@ router.post('/reset-password', async (req, res) => {
   await transporter.sendMail({
     to: email,
     subject: "Password Reset - Branding Shop",
-    html: `<p>Click the link below to reset your password:</p><a href="${resetUrl}">${resetUrl}</a>`
+    html: `
+  <div style="font-family:Arial,sans-serif;padding:20px;background:#f9f9f9;border:1px solid #ddd;border-radius:10px;">
+    <h2 style="color:#007bff;">Branding Shop – Password Reset</h2>
+    <p>Hello,</p>
+    <p>You requested a password reset. Click the button below to reset your password:</p>
+    <p style="text-align:center;">
+      <a href="${resetUrl}" style="display:inline-block;padding:10px 20px;background:#28a745;color:#fff;text-decoration:none;border-radius:5px;">Reset Password</a>
+    </p>
+    <p>If you didn't request this, you can safely ignore this email.</p>
+    <p>– The Branding Shop Team</p>
+  </div>
+`
+
   });
 
   res.status(200).json({ message: "If that email exists, a reset link has been sent." });
