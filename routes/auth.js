@@ -5,13 +5,18 @@ const bcrypt = require('bcrypt');
 
 // POST /api/auth/register
 router.post('/register', async (req, res) => {
-  const { name, email, phone_number, password } = req.body;
-  const hash = await bcrypt.hash(password, 10);
-  const { rows } = await db.query(
-    `INSERT INTO users(name,email,phone_number,password_hash)
-     VALUES($1,$2,$3,$4) RETURNING id,name,email,phone_number`,
-    [name, email, phone_number, hash]
-  );
+const { name, email, phone_number, password, security_question, security_answer } = req.body;
+
+const passwordHash = await bcrypt.hash(password, 10);
+const answerHash = await bcrypt.hash(security_answer, 10);
+
+const { rows } = await db.query(
+  `INSERT INTO users(name, email, phone_number, password_hash, security_question, security_answer_hash)
+   VALUES($1, $2, $3, $4, $5, $6)
+   RETURNING id, name, email, phone_number, security_question`,
+  [name, email, phone_number, passwordHash, security_question, answerHash]
+);
+
   const user = rows[0];
 
   // assign default 'customer' role
@@ -80,6 +85,18 @@ router.post('/login', async (req, res) => {
 
 const nodemailer = require('nodemailer');
 const crypto = require('crypto');
+
+// GET /api/auth/security-question?email=
+router.get('/security-question', async (req, res) => {
+  const { email } = req.query;
+  const { rows } = await db.query(
+    'SELECT security_question FROM users WHERE email = $1',
+    [email]
+  );
+  if (rows.length === 0) return res.status(404).json({ message: 'User not found' });
+  res.json({ question: rows[0].security_question });
+});
+
 
 // POST /api/auth/reset-password (request reset link)
 router.post('/reset-password', async (req, res) => {
