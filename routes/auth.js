@@ -78,4 +78,64 @@ router.post('/login', async (req, res) => {
   });
 });
 
+const nodemailer = require('nodemailer');
+const crypto = require('crypto');
+
+// POST /api/auth/reset-password (request reset link)
+router.post('/reset-password', async (req, res) => {
+  const { email } = req.body;
+
+  const { rows } = await db.query('SELECT * FROM users WHERE email = $1', [email]);
+  const user = rows[0];
+  if (!user) return res.status(200).json({ message: "If that email exists, a reset link has been sent." });
+
+  const resetToken = crypto.randomBytes(32).toString('hex');
+  const expiry = Date.now() + 60 * 60 * 1000; // 1 hour
+
+  await db.query(
+    'UPDATE users SET reset_token = $1, reset_token_expiry = $2 WHERE id = $3',
+    [resetToken, expiry, user.id]
+  );
+
+  const resetUrl = `https://harrykp.github.io/branding-shop-frontend/store/reset-confirm.html?token=${resetToken}&email=${encodeURIComponent(email)}`;
+
+  const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASS
+    }
+  });
+
+  await transporter.sendMail({
+    to: email,
+    subject: "Password Reset - Branding Shop",
+    html: `<p>Click the link below to reset your password:</p><a href="${resetUrl}">${resetUrl}</a>`
+  });
+
+  res.status(200).json({ message: "If that email exists, a reset link has been sent." });
+});
+
+// POST /api/auth/reset-password/confirm
+router.post('/reset-password/confirm', async (req, res) => {
+  const { email, token, newPassword } = req.body;
+
+  const { rows } = await db.query(
+    'SELECT * FROM users WHERE email = $1 AND reset_token = $2 AND reset_token_expiry > $3',
+    [email, token, Date.now()]
+  );
+
+  const user = rows[0];
+  if (!user) return res.status(400).json({ message: "Invalid or expired token." });
+
+  const hashed = await bcrypt.hash(newPassword, 10);
+  await db.query(
+    'UPDATE users SET password_hash = $1, reset_token = NULL, reset_token_expiry = NULL WHERE id = $2',
+    [hashed, user.id]
+  );
+
+  res.status(200).json({ message: "Password successfully reset. Please log in." });
+});
+
+
 module.exports = router;
