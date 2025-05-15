@@ -1,5 +1,3 @@
-// branding-shop-backend/server.js
-
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
@@ -7,101 +5,64 @@ require('dotenv').config();
 
 const app = express();
 
-// This will guarantee the browser sees the right Access-Control-Allow-Headers
+// Allow secure CORS headers for browser clients
 app.use(cors({
   origin: '*',
-  methods: ['GET','POST','PATCH','DELETE','OPTIONS'],
-  allowedHeaders: ['Content-Type','Authorization']
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
 app.use(express.json());
 
-
-// serve anything under /store from ./store
+// Serve frontend files
 app.use('/store', express.static(path.join(__dirname, 'store')));
-
-// 2) Serve your existing user-portal at the project root
 app.use('/', express.static(path.join(__dirname)));
 
-
-// JWT auth middleware
-const auth = require('./middleware/auth');
-
-// -- Route imports --
-const authRouter               = require('./routes/auth');
-const usersRouter              = require('./routes/users');
-const rolesRouter              = require('./routes/roles');
-const quotesRouter             = require('./routes/quotes');
-const ordersRouter             = require('./routes/orders');
-const pricingRulesRouter       = require('./routes/pricing_rules');
-const productsRouter           = require('./routes/products');
-const productCategoriesRouter  = require('./routes/product_categories');
-const suppliersRouter          = require('./routes/suppliers');
-const catalogRouter            = require('./routes/catalog');
-const purchaseOrdersRouter     = require('./routes/purchase_orders');
-const shippingRouter           = require('./routes/shipping');
-const jobsRouter               = require('./routes/jobs');
-const approvalsRouter          = require('./routes/approvals');
-const mockupsRouter            = require('./routes/mockups');
-const leadsRouter              = require('./routes/leads');
-const dealsRouter              = require('./routes/deals');
-const salesTargetsRouter       = require('./routes/sales_targets');
-const commissionsRouter        = require('./routes/commissions');
-const hrRouter                 = require('./routes/hr');
-const paymentsRouter           = require('./routes/payments');
-const expensesRouter           = require('./routes/expenses');
-const dailyTransactionsRouter  = require('./routes/transactions');
-const taxesRouter              = require('./routes/taxes');
-const reportsRouter            = require('./routes/reports');
-const complaintsRouter         = require('./routes/complaints');
-const cartRouter               = require('./routes/cart');
-const checkoutRouter           = require('./routes/checkout');
-const adminRoutes              = require('./routes/admin');
-
-const reportsSalesRouter       = require('./routes/reports_sales');
-const reportsFinanceRouter     = require('./routes/reports_finance');
-const reportsTaxesRouter       = require('./routes/reports_taxes');
-const reportsLeaveRouter       = require('./routes/reports_leave');
-const reportsCashflowRouter    = require('./routes/reports_cashflow');
+// JWT middleware
+const { authenticate } = require('./middleware/auth');
 
 // -- Public routes --
-app.use('/api/auth', authRouter);
+app.use('/api/auth', require('./routes/auth'));
 
-// -- Protected routes (require a valid JWT) --
-app.use('/api/users',             auth, usersRouter);
-app.use('/api/roles',             auth, rolesRouter);
-app.use('/api/quotes',            auth, quotesRouter);
-app.use('/api/orders',            auth, ordersRouter);
-app.use('/api/pricing-rules',     auth, pricingRulesRouter);
-app.use('/api/products',          auth, productsRouter);
-app.use('/api/product-categories',auth, productCategoriesRouter);
-app.use('/api/suppliers',         auth, suppliersRouter);
-app.use('/api/catalog',           auth, catalogRouter);
-app.use('/api/purchase-orders',   auth, purchaseOrdersRouter);
-app.use('/api/shipping',          auth, shippingRouter);
-app.use('/api/jobs',              auth, jobsRouter);
-app.use('/api/approvals',         auth, approvalsRouter);
-app.use('/api/mockups',           auth, mockupsRouter);
-app.use('/api/leads',             auth, leadsRouter);
-app.use('/api/deals',             auth, dealsRouter);
-app.use('/api/targets',           auth, salesTargetsRouter);
-app.use('/api/commissions',       auth, commissionsRouter);
-app.use('/api/hr',                auth, hrRouter);
-app.use('/api/payments',          auth, paymentsRouter);
-app.use('/api/expenses',          auth, expensesRouter);
-app.use('/api/daily-transactions',auth, dailyTransactionsRouter);
-app.use('/api/taxes',             auth, taxesRouter);
-app.use('/api/reports',           auth, reportsRouter);
-app.use('/api/complaints',        auth, complaintsRouter);
-app.use('/api/cart',              auth, cartRouter);
-app.use('/api/checkout',          auth, checkoutRouter);
-app.use('/api/admin',             auth, adminRoutes);
+// -- Protected routes (JWT required) --
+const protectedRoutes = [
+  ['users', 'users'],
+  ['roles', 'roles'],
+  ['quotes', 'quotes'],
+  ['orders', 'orders'],
+  ['pricing-rules', 'pricing_rules'],
+  ['products', 'products'],
+  ['product-categories', 'product_categories'],
+  ['suppliers', 'suppliers'],
+  ['catalog', 'catalog'],
+  ['purchase-orders', 'purchase_orders'],
+  ['shipping', 'shipping'],
+  ['jobs', 'jobs'],
+  ['approvals', 'approvals'],
+  ['mockups', 'mockups'],
+  ['leads', 'leads'],
+  ['deals', 'deals'],
+  ['targets', 'sales_targets'],
+  ['commissions', 'commissions'],
+  ['hr', 'hr'],
+  ['payments', 'payments'],
+  ['expenses', 'expenses'],
+  ['daily-transactions', 'transactions'],
+  ['taxes', 'taxes'],
+  ['reports', 'reports'],
+  ['complaints', 'complaints'],
+  ['cart', 'cart'],
+  ['checkout', 'checkout'],
+  ['admin', 'admin'],
+  ['reports/sales', 'reports_sales'],
+  ['reports/finance', 'reports_finance'],
+  ['reports/taxes', 'reports_taxes'],
+  ['reports/leave', 'reports_leave'],
+  ['reports/cashflow', 'reports_cashflow']
+];
 
-// -- Report sub-endpoints (all under /api/reports) --
-app.use('/api/reports/sales',    auth, reportsSalesRouter);
-app.use('/api/reports/finance',  auth, reportsFinanceRouter);
-app.use('/api/reports/taxes',    auth, reportsTaxesRouter);
-app.use('/api/reports/leave',    auth, reportsLeaveRouter);
-app.use('/api/reports/cashflow', auth, reportsCashflowRouter);
+for (const [route, file] of protectedRoutes) {
+  app.use(`/api/${route}`, authenticate, require(`./routes/${file}`));
+}
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`API listening on port ${PORT}`));
