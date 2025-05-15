@@ -8,14 +8,26 @@ const authMiddleware = require('../middleware/auth');
 router.put('/reset-password', authMiddleware.requireAdmin, async (req, res) => {
   const { email, newPassword } = req.body;
 
-  const { rows } = await db.query('SELECT id FROM users WHERE email = $1', [email]);
-  const user = rows[0];
-  if (!user) return res.status(404).json({ message: "User not found" });
+  try {
+    if (!email || !newPassword) {
+      return res.status(400).json({ message: "Email and new password are required." });
+    }
 
-  const hash = await bcrypt.hash(newPassword, 10);
-  await db.query('UPDATE users SET password_hash = $1 WHERE id = $2', [hash, user.id]);
+    const { rows } = await db.query('SELECT id FROM users WHERE email = $1', [email]);
+    const user = rows[0];
 
-  res.json({ message: "Password successfully reset." });
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const hash = await bcrypt.hash(newPassword, 10);
+    await db.query('UPDATE users SET password_hash = $1 WHERE id = $2', [hash, user.id]);
+
+    res.status(200).json({ message: "Password successfully reset." });
+  } catch (err) {
+    console.error("Admin password reset error:", err);
+    res.status(500).json({ message: "Internal server error." });
+  }
 });
 
 module.exports = router;
