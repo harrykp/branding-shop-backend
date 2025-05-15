@@ -178,6 +178,28 @@ router.post('/reset-password/confirm', async (req, res) => {
   res.status(200).json({ message: "Password successfully reset. You can now log in." });
 });
 
+router.put('/update-profile', async (req, res) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token) return res.status(401).json({ message: "Missing token" });
+
+  let decoded;
+  try {
+    decoded = jwt.verify(token, process.env.JWT_SECRET);
+  } catch {
+    return res.status(401).json({ message: "Invalid token" });
+  }
+
+  const { password, security_question, security_answer } = req.body;
+  const passwordHash = await bcrypt.hash(password, 10);
+  const answerHash = await bcrypt.hash(security_answer, 10);
+
+  await db.query(
+    'UPDATE users SET password_hash = $1, security_question = $2, security_answer_hash = $3 WHERE id = $4',
+    [passwordHash, security_question, answerHash, decoded.userId]
+  );
+
+  res.json({ message: "Profile updated successfully." });
+});
 
 
 module.exports = router;
