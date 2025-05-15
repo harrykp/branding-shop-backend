@@ -2,17 +2,17 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const bcrypt = require('bcrypt');
-const authMiddleware = require('../middleware/auth');
+const { requireAdmin } = require('../middleware/auth');
 
 // PUT /api/admin/reset-password
-router.put('/reset-password', authMiddleware.requireAdmin, async (req, res) => {
+router.put('/reset-password', requireAdmin, async (req, res) => {
   const { email, newPassword } = req.body;
 
-  try {
-    if (!email || !newPassword) {
-      return res.status(400).json({ message: "Email and new password are required." });
-    }
+  if (!email || !newPassword) {
+    return res.status(400).json({ message: "Email and new password are required." });
+  }
 
+  try {
     const { rows } = await db.query('SELECT id FROM users WHERE email = $1', [email]);
     const user = rows[0];
 
