@@ -28,4 +28,17 @@ module.exports = async function auth(req, res, next) {
     console.error('Auth error:', err);
     res.status(401).json({ error: 'Invalid or expired token' });
   }
+
+  function requireAdmin(req, res, next) {
+  const user = req.user;
+  if (!user || !user.roles || !user.roles.includes('admin')) {
+    return res.status(403).json({ message: 'Admin access required' });
+  }
+  next();
+}
+
+module.exports = {
+  requireAdmin,
+  // other middlewares if any...
+};
 };
