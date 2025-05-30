@@ -37,7 +37,7 @@ router.get('/sales/timeseries', async (req, res) => {
   try {
     const result = await db.query(`
       SELECT DATE(created_at) AS date,
-             SUM(total_amount) AS revenue,
+             SUM(total) AS revenue,
              COUNT(*) AS orders
       FROM orders
       WHERE status != 'cancelled'
@@ -51,6 +51,7 @@ router.get('/sales/timeseries', async (req, res) => {
     res.status(500).json({ message: "Error fetching timeseries data." });
   }
 });
+
 
 // 3. Order Status Counts
 router.get('/orders/status', async (req, res) => {
