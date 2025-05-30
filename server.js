@@ -20,10 +20,10 @@ app.use('/', express.static(path.join(__dirname)));
 // JWT middleware
 const { authenticate } = require('./middleware/auth');
 
-// -- Public routes --
+// Public routes (no authentication)
 app.use('/api/auth', require('./routes/auth'));
 
-// -- Protected routes (JWT required) --
+// Protected routes (require JWT auth)
 const protectedRoutes = [
   ['users', 'users'],
   ['roles', 'roles'],
@@ -48,7 +48,7 @@ const protectedRoutes = [
   ['expenses', 'expenses'],
   ['daily-transactions', 'transactions'],
   ['taxes', 'taxes'],
-  ['reports', 'reports'],
+  ['reports', 'reports'], // 👈 newly upgraded reports.js file with dashboard endpoints
   ['complaints', 'complaints'],
   ['cart', 'cart'],
   ['checkout', 'checkout'],
@@ -60,6 +60,7 @@ const protectedRoutes = [
   ['reports/cashflow', 'reports_cashflow']
 ];
 
+// Register all protected routes
 for (const [route, file] of protectedRoutes) {
   app.use(`/api/${route}`, authenticate, require(`./routes/${file}`));
 }
