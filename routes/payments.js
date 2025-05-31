@@ -8,7 +8,7 @@ router.get('/', filterByOwnership(), async (req, res) => {
   try {
     const baseQuery = 'SELECT * FROM payments';
     const { clause, values } = getOwnershipClause(req);
-    const finalQuery = clause ? \`\${baseQuery} \${clause}\` : baseQuery;
+    const finalQuery = clause ? `${baseQuery} ${clause}` : baseQuery;
     const result = await db.query(finalQuery, values);
     res.json(result.rows);
   } catch (err) {
@@ -38,8 +38,11 @@ router.get('/:id', filterByOwnership(), async (req, res) => {
   const { id } = req.params;
   const { clause, values } = getOwnershipClause(req, 'AND');
   try {
-    const result = await db.query(\`SELECT * FROM payments WHERE id = $1 \${clause}\`, [id, ...values]);
-    if (result.rows.length === 0) return res.status(404).json({ message: "Payment not found" });
+    const query = `SELECT * FROM payments WHERE id = $1 ${clause}`;
+    const result = await db.query(query, [id, ...values]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: "Payment not found" });
+    }
     res.json(result.rows[0]);
   } catch (err) {
     console.error("Error retrieving payment:", err);
