@@ -8,7 +8,7 @@ router.get('/', filterByOwnership(), async (req, res) => {
   try {
     const baseQuery = 'SELECT * FROM deals';
     const { clause, values } = getOwnershipClause(req);
-    const finalQuery = clause ? \`\${baseQuery} \${clause}\` : baseQuery;
+    const finalQuery = clause ? `${baseQuery} ${clause}` : baseQuery;
     const result = await db.query(finalQuery, values);
     res.json(result.rows);
   } catch (err) {
@@ -39,11 +39,11 @@ router.put('/:id', filterByOwnership(), async (req, res) => {
   const { name, value, status } = req.body;
   const { clause, values } = getOwnershipClause(req, 'AND');
   try {
-    const result = await db.query(
-      \`UPDATE deals SET name = $1, value = $2, status = $3 WHERE id = $4 \${clause} RETURNING *\`,
-      [name, value, status, id, ...values]
-    );
-    if (result.rows.length === 0) return res.status(404).json({ message: "Deal not found or unauthorized" });
+    const query = `UPDATE deals SET name = $1, value = $2, status = $3 WHERE id = $4 ${clause} RETURNING *`;
+    const result = await db.query(query, [name, value, status, id, ...values]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: "Deal not found or unauthorized" });
+    }
     res.json(result.rows[0]);
   } catch (err) {
     console.error("Error updating deal:", err);
@@ -56,8 +56,11 @@ router.delete('/:id', filterByOwnership(), async (req, res) => {
   const { id } = req.params;
   const { clause, values } = getOwnershipClause(req, 'AND');
   try {
-    const result = await db.query(\`DELETE FROM deals WHERE id = $1 \${clause}\`, [id, ...values]);
-    if (result.rowCount === 0) return res.status(404).json({ message: "Deal not found or unauthorized" });
+    const query = `DELETE FROM deals WHERE id = $1 ${clause}`;
+    const result = await db.query(query, [id, ...values]);
+    if (result.rowCount === 0) {
+      return res.status(404).json({ message: "Deal not found or unauthorized" });
+    }
     res.json({ message: "Deal deleted" });
   } catch (err) {
     console.error("Error deleting deal:", err);
