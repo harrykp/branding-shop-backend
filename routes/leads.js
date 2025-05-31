@@ -8,7 +8,7 @@ router.get('/', filterByOwnership(), async (req, res) => {
   try {
     const baseQuery = 'SELECT * FROM leads';
     const { clause, values } = getOwnershipClause(req);
-    const finalQuery = clause ? \`\${baseQuery} \${clause}\` : baseQuery;
+    const finalQuery = clause ? `${baseQuery} ${clause}` : baseQuery;
     const result = await db.query(finalQuery, values);
     res.json(result.rows);
   } catch (err) {
