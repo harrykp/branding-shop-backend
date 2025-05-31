@@ -1,85 +1,42 @@
-// branding-shop-backend/routes/hr.js
-
-const router = require('express').Router();
+const express = require('express');
+const router = express.Router();
 const db = require('../db');
+const { authenticate } = require('../middleware/auth');
 
-// GET all HR info
-router.get('/', async (req, res) => {
+// GET /api/hr
+router.get('/', authenticate, async (req, res) => {
   try {
-    const { rows } = await db.query(`
-      SELECT 
-        h.id,
-        u.name     AS name,       -- alias as 'name' so frontend h.name works
-        h.ssn,
-        h.position,
-        h.salary,
-        h.hire_date
-      FROM hr_info h
-      JOIN users u ON u.id = h.user_id
-      ORDER BY h.user_id
-    `);
-    res.json(rows);
+    if (req.user.roles.includes('admin') || req.user.roles.includes('hr')) {
+      const result = await db.query('SELECT * FROM hr');
+      return res.json(result.rows);
+    }
+
+    // Regular employees: only their own HR record
+    const result = await db.query('SELECT * FROM hr WHERE user_id = $1', [req.user.id]);
+    return res.json(result.rows);
   } catch (err) {
-    console.error('GET /api/hr error', err);
-    res.status(500).json({ error: 'Failed to fetch HR info' });
+    console.error("Error fetching HR records:", err);
+    res.status(500).json({ message: "Error fetching HR records" });
   }
 });
 
-// GET one HR record by id
-router.get('/:id', async (req, res) => {
-  try {
-    const { rows } = await db.query(
-      `
-        SELECT 
-          h.id,
-          h.user_id,
-          u.name     AS name,   -- also alias here
-          h.ssn,
-          h.position,
-          h.salary,
-          h.hire_date
-        FROM hr_info h
-        JOIN users u ON u.id = h.user_id
-        WHERE h.id = $1
-      `,
-      [req.params.id]
-    );
-    if (!rows[0]) {
-      return res.status(404).json({ error: 'HR record not found' });
-    }
-    res.json(rows[0]);
-  } catch (err) {
-    console.error(`GET /api/hr/${req.params.id} error`, err);
-    res.status(500).json({ error: 'Failed to fetch HR record' });
+// POST /api/hr
+router.post('/', authenticate, async (req, res) => {
+  const { user_id, department, job_title, ssnit, insurance } = req.body;
+
+  if (!req.user.roles.includes('admin') && !req.user.roles.includes('hr')) {
+    return res.status(403).json({ message: "Only HR or Admin can create HR records" });
   }
-});
 
-// PATCH update HR info
-router.patch('/:id', async (req, res) => {
   try {
-    const fields = ['position', 'salary'];
-    const sets = fields
-      .filter(f => f in req.body)
-      .map((f, i) => `${f} = $${i+1}`);
-    const vals = fields.filter(f => f in req.body).map(f => req.body[f]);
-
-    if (!sets.length) {
-      return res.status(400).json({ error: 'No fields to update' });
-    }
-
-    const { rows } = await db.query(
-      `
-        UPDATE hr_info
-        SET ${sets.join(', ')}
-        WHERE id = $${sets.length + 1}
-        RETURNING id, user_id, position, salary, hire_date
-      `,
-      [...vals, req.params.id]
+    const result = await db.query(
+      'INSERT INTO hr (user_id, department, job_title, ssnit, insurance) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+      [user_id, department, job_title, ssnit, insurance]
     );
-    res.json(rows[0]);
+    res.status(201).json(result.rows[0]);
   } catch (err) {
-    console.error(`PATCH /api/hr/${req.params.id} error`, err);
-    res.status(500).json({ error: 'Failed to update HR record' });
+    console.error("Error creating HR record:", err);
+    res.status(500).json({ message: "Error saving HR record" });
   }
 });
 
