@@ -1,115 +1,49 @@
-// branding-shop-backend/routes/payments.js
+const express = require('express');
+const router = express.Router();
+const db = require('../db');
+const { filterByOwnership, getOwnershipClause } = require('../middleware/userAccess');
 
-const router = require('express').Router();
-const db     = require('../db');
-const { Pool } = require('pg');
-
-// Create a dedicated pool for transactional operations
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : undefined
-});
-
-// GET all payments (for admin)
-router.get('/', async (req, res) => {
+// GET /api/payments - list payments (admin = all, users = their own)
+router.get('/', filterByOwnership(), async (req, res) => {
   try {
-    const { rows } = await db.query(`
-      SELECT
-        p.id,
-        p.order_id,
-        p.amount,
-        p.gateway,
-        p.status,
-        p.paid_at,
-        p.created_at,
-        j.id          AS job_id,
-        j.status      AS job_status
-      FROM payments p
-      LEFT JOIN jobs j ON j.order_id = p.order_id
-      ORDER BY p.created_at DESC
-    `);
-    res.json(rows);
+    const baseQuery = 'SELECT * FROM payments';
+    const { clause, values } = getOwnershipClause(req);
+    const finalQuery = clause ? \`\${baseQuery} \${clause}\` : baseQuery;
+    const result = await db.query(finalQuery, values);
+    res.json(result.rows);
   } catch (err) {
-    console.error('GET /api/payments error', err);
-    res.status(500).json({ error: 'Failed to fetch payments' });
+    console.error("Error fetching payments:", err);
+    res.status(500).json({ message: "Server error" });
   }
 });
 
-// POST capture a payment, mark order paid, and auto-create a production job
+// POST /api/payments - create a payment
 router.post('/', async (req, res) => {
-  const { order_id, amount, gateway } = req.body;
-  if (!order_id || !amount || !gateway) {
-    return res.status(400).json({
-      error: 'Missing required fields: order_id, amount, gateway'
-    });
-  }
-
-  const client = await pool.connect();
+  const { order_id, amount, method, reference } = req.body;
+  const userId = req.user.id;
   try {
-    await client.query('BEGIN');
-
-    // 1) Insert the payment record
-    const payRes = await client.query(
-      `INSERT INTO payments
-         (order_id, amount, gateway, status, paid_at)
-       VALUES ($1, $2, $3, 'completed', now())
-       RETURNING id, order_id, amount, gateway, status, paid_at, created_at`,
-      [order_id, amount, gateway]
+    const result = await db.query(
+      'INSERT INTO payments (user_id, order_id, amount, method, reference) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+      [userId, order_id, amount, method, reference]
     );
-    const payment = payRes.rows[0];
-
-    // 2) Mark the order as paid
-    await client.query(
-      `UPDATE orders
-         SET payment_status = 'paid'
-       WHERE id = $1`,
-      [order_id]
-    );
-
-    // 3) Fetch associated quote_id from orders
-    const orderRes = await client.query(
-      `SELECT quote_id FROM orders WHERE id = $1`,
-      [order_id]
-    );
-    if (!orderRes.rows[0]) {
-      throw new Error(`Order ${order_id} not found`);
-    }
-    const quoteId = orderRes.rows[0].quote_id;
-
-    // 4) Fetch quantity from quotes
-    const quoteRes = await client.query(
-      `SELECT quantity FROM quotes WHERE id = $1`,
-      [quoteId]
-    );
-    const qty = quoteRes.rows[0]?.quantity || 0;
-
-    // 5) Fetch deal info for this quote (if any)
-    const dealRes = await client.query(
-      `SELECT id AS deal_id, assigned_to FROM deals WHERE quote_id = $1`,
-      [quoteId]
-    );
-    const deal = dealRes.rows[0] || {};
-    const dealId = deal.deal_id || null;
-    const assignedTo = deal.assigned_to || null;
-
-    // 6) Insert a production job
-    const jobRes = await client.query(
-      `INSERT INTO jobs
-         (order_id, deal_id, type, qty, assigned_to, status, start_date, due_date)
-       VALUES ($1, $2, 'production', $3, $4, 'queued', now(), now() + INTERVAL '1 day')
-       RETURNING *`,
-      [order_id, dealId, qty, assignedTo]
-    );
-    const job = jobRes.rows[0];
-
-    await client.query('COMMIT');
-    res.status(201).json({ payment, job });
+    res.status(201).json(result.rows[0]);
   } catch (err) {
-    await client.query('ROLLBACK');
-    console.error('POST /api/payments error', err);
-    res.status(500).json({ error: err.message || 'Failed to record payment' });
-  } finally {
-    client.release();
+    console.error("Error creating payment:", err);
+    res.status(500).json({ message: "Error creating payment" });
+  }
+});
+
+// GET /api/payments/:id
+router.get('/:id', filterByOwnership(), async (req, res) => {
+  const { id } = req.params;
+  const { clause, values } = getOwnershipClause(req, 'AND');
+  try {
+    const result = await db.query(\`SELECT * FROM payments WHERE id = $1 \${clause}\`, [id, ...values]);
+    if (result.rows.length === 0) return res.status(404).json({ message: "Payment not found" });
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error("Error retrieving payment:", err);
+    res.status(500).json({ message: "Error retrieving payment" });
   }
 });
 
