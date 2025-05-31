@@ -2,13 +2,13 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const { authenticate } = require('../middleware/auth');
+const { notifyCustomerOfJobStatus } = require('../utils/notifyCustomer');
 
 // GET /api/jobs
 router.get('/', authenticate, async (req, res) => {
   try {
     let result;
     if (req.user.roles.includes('customer')) {
-      // Restrict customers to jobs from their orders
       result = await db.query(
         `SELECT * FROM jobs WHERE order_id IN (
            SELECT id FROM orders WHERE user_id = $1
@@ -16,7 +16,6 @@ router.get('/', authenticate, async (req, res) => {
         [req.user.id]
       );
     } else {
-      // Admins and employees see all jobs
       result = await db.query('SELECT * FROM jobs');
     }
     res.json(result.rows);
@@ -53,6 +52,10 @@ router.put('/:id', authenticate, async (req, res) => {
       [status, scheduled_date, id]
     );
     if (result.rows.length === 0) return res.status(404).json({ message: "Job not found" });
+
+    // Notify customer of status update
+    await notifyCustomerOfJobStatus(id, status);
+
     res.json(result.rows[0]);
   } catch (err) {
     console.error("Error updating job:", err);
