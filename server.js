@@ -48,7 +48,7 @@ const protectedRoutes = [
   ['expenses', 'expenses'],
   ['daily-transactions', 'transactions'],
   ['taxes', 'taxes'],
-  ['reports', 'reports'], // 👈 newly upgraded reports.js file with dashboard endpoints
+  ['reports', 'reports'],                // Reports index + summary
   ['complaints', 'complaints'],
   ['cart', 'cart'],
   ['checkout', 'checkout'],
@@ -57,7 +57,16 @@ const protectedRoutes = [
   ['reports/finance', 'reports_finance'],
   ['reports/taxes', 'reports_taxes'],
   ['reports/leave', 'reports_leave'],
-  ['reports/cashflow', 'reports_cashflow']
+  ['reports/cashflow', 'reports_cashflow'],
+  ['chart-accounts', 'chart_accounts'],
+  ['departments', 'departments'],
+  ['insurances', 'insurances'],
+  ['loans', 'loans'],
+  ['payment-arrears', 'payment_arrears'],
+  ['payment-transactions', 'payment_transactions'],
+  ['payment-types', 'payment_types'],
+  ['payrolls', 'payrolls'],
+  ['vacation-requests', 'vacation_requests']
 ];
 
 // Register all protected routes
@@ -66,4 +75,4 @@ for (const [route, file] of protectedRoutes) {
 }
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`API listening on port ${PORT}`));
+app.listen(PORT, () => console.log(`✅ API listening on port ${PORT}`));
