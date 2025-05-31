@@ -41,7 +41,7 @@ router.put('/:id', filterByOwnership(), async (req, res) => {
 
   try {
     const result = await db.query(
-      \`UPDATE leads SET name = $1, contact_info = $2, interest_level = $3 WHERE id = $4 \${clause} RETURNING *\`,
+      `UPDATE leads SET name = $1, contact_info = $2, interest_level = $3 WHERE id = $4 \${clause} RETURNING *`,
       [name, contact_info, interest_level, id, ...values]
     );
     if (result.rows.length === 0) return res.status(404).json({ message: "Lead not found or unauthorized" });
