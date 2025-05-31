@@ -8,7 +8,7 @@ router.get('/', filterByOwnership(), async (req, res) => {
   try {
     const baseQuery = 'SELECT * FROM complaints';
     const { clause, values } = getOwnershipClause(req);
-    const finalQuery = clause ? \`\${baseQuery} \${clause}\` : baseQuery;
+    const finalQuery = clause ? `${baseQuery} ${clause}` : baseQuery;
     const result = await db.query(finalQuery, values);
     res.json(result.rows);
   } catch (err) {
@@ -38,8 +38,11 @@ router.delete('/:id', filterByOwnership(), async (req, res) => {
   const { id } = req.params;
   const { clause, values } = getOwnershipClause(req, 'AND');
   try {
-    const result = await db.query(\`DELETE FROM complaints WHERE id = $1 \${clause}\`, [id, ...values]);
-    if (result.rowCount === 0) return res.status(404).json({ message: "Complaint not found or unauthorized" });
+    const query = `DELETE FROM complaints WHERE id = $1 ${clause}`;
+    const result = await db.query(query, [id, ...values]);
+    if (result.rowCount === 0) {
+      return res.status(404).json({ message: "Complaint not found or unauthorized" });
+    }
     res.json({ message: "Complaint deleted" });
   } catch (err) {
     console.error("Error deleting complaint:", err);
