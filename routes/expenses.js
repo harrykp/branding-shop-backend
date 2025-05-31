@@ -1,30 +1,41 @@
-// branding-shop-backend/routes/expenses.js
-const router = require('express').Router();
+const express = require('express');
+const router = express.Router();
 const db = require('../db');
+const { authenticate } = require('../middleware/auth');
 
-// GET all
-router.get('/', async (req, res) => {
-  const { rows } = await db.query(`
-    SELECT * FROM expenses ORDER BY expense_date DESC
-  `);
-  res.json(rows);
+// GET /api/expenses - Admins and accountants only
+router.get('/', authenticate, async (req, res) => {
+  try {
+    if (!req.user.roles.includes('admin') && !req.user.roles.includes('accountant')) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+
+    const result = await db.query('SELECT * FROM expenses ORDER BY created_at DESC');
+    res.json(result.rows);
+  } catch (err) {
+    console.error("Error fetching expenses:", err);
+    res.status(500).json({ message: "Server error" });
+  }
 });
 
-// CREATE
-router.post('/', async (req, res) => {
-  const { amount,category,description,expense_date } = req.body;
-  const { rows } = await db.query(
-    `INSERT INTO expenses(user_id,amount,category,description,expense_date)
-     VALUES($1,$2,$3,$4,$5) RETURNING *`,
-    [req.user.id,amount,category,description,expense_date]
-  );
-  res.status(201).json(rows[0]);
-});
+// POST /api/expenses
+router.post('/', authenticate, async (req, res) => {
+  const { description, amount, category, expense_date } = req.body;
 
-// DELETE
-router.delete('/:id', async (req, res) => {
-  await db.query(`DELETE FROM expenses WHERE id=$1`, [req.params.id]);
-  res.status(204).end();
+  if (!req.user.roles.includes('admin') && !req.user.roles.includes('accountant')) {
+    return res.status(403).json({ message: "Access denied" });
+  }
+
+  try {
+    const result = await db.query(
+      'INSERT INTO expenses (description, amount, category, expense_date) VALUES ($1, $2, $3, $4) RETURNING *',
+      [description, amount, category, expense_date]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error("Error creating expense:", err);
+    res.status(500).json({ message: "Error saving expense" });
+  }
 });
 
 module.exports = router;
