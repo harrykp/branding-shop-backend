@@ -1,32 +1,41 @@
-const router = require('express').Router();
+const express = require('express');
+const router = express.Router();
 const db = require('../db');
+const { authenticate } = require('../middleware/auth');
 
 // GET /api/shipping
-router.get('/', async (req, res) => {
-  const { rows } = await db.query(`
-    SELECT sl.id,o.id AS order_id,sl.carrier,sl.tracking_number,sl.label_url,sl.created_at
-    FROM shipping_labels sl
-    JOIN orders o ON o.id=sl.order_id
-  `);
-  res.json(rows);
+router.get('/', authenticate, async (req, res) => {
+  if (!req.user.roles.includes('admin') && !req.user.roles.includes('fulfillment')) {
+    return res.status(403).json({ message: "Access denied" });
+  }
+
+  try {
+    const result = await db.query('SELECT * FROM shipping ORDER BY ship_date DESC');
+    res.json(result.rows);
+  } catch (err) {
+    console.error("Error fetching shipping records:", err);
+    res.status(500).json({ message: "Error fetching shipping records" });
+  }
 });
 
 // POST /api/shipping
-router.post('/', async (req, res) => {
-  const { order_id, carrier, tracking_number, label_url } = req.body;
-  const { rows } = await db.query(
-    `INSERT INTO shipping_labels(order_id,carrier,tracking_number,label_url)
-     VALUES($1,$2,$3,$4) RETURNING *`,
-    [order_id,carrier,tracking_number,label_url]
-  );
-  res.status(201).json(rows[0]);
-});
+router.post('/', authenticate, async (req, res) => {
+  if (!req.user.roles.includes('admin') && !req.user.roles.includes('fulfillment')) {
+    return res.status(403).json({ message: "Access denied" });
+  }
 
-// DELETE /api/shipping/:id
-router.delete('/:id', async (req, res) => {
-  await db.query(`DELETE FROM shipping_labels WHERE id=$1`, [req.params.id]);
-  res.status(204).end();
+  const { order_id, tracking_number, carrier, ship_date, notes } = req.body;
+
+  try {
+    const result = await db.query(
+      'INSERT INTO shipping (order_id, tracking_number, carrier, ship_date, notes) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+      [order_id, tracking_number, carrier, ship_date, notes]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error("Error saving shipping record:", err);
+    res.status(500).json({ message: "Error saving shipping record" });
+  }
 });
 
 module.exports = router;
-

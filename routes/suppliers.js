@@ -1,105 +1,39 @@
-// branding-shop-backend/routes/suppliers.js
-
-const router = require('express').Router();
+const express = require('express');
+const router = express.Router();
 const db = require('../db');
+const { authenticate } = require('../middleware/auth');
 
-// GET all suppliers
 // GET /api/suppliers
-router.get('/', async (req, res) => {
+router.get('/', authenticate, async (req, res) => {
+  if (!req.user.roles.includes('admin') && !req.user.roles.includes('sales')) {
+    return res.status(403).json({ message: "Access denied" });
+  }
+
   try {
-    const { rows } = await db.query(`
-      SELECT id, name, website
-      FROM suppliers
-      ORDER BY id
-    `);
-    res.json(rows);
+    const result = await db.query('SELECT * FROM suppliers ORDER BY name');
+    res.json(result.rows);
   } catch (err) {
-    console.error('GET /api/suppliers error', err);
-    res.status(500).json({ error: 'Failed to fetch suppliers' });
+    console.error("Error fetching suppliers:", err);
+    res.status(500).json({ message: "Error fetching suppliers" });
   }
 });
 
-// GET a single supplier
-// GET /api/suppliers/:id
-router.get('/:id', async (req, res) => {
-  try {
-    const { rows } = await db.query(`
-      SELECT id, name, website
-      FROM suppliers
-      WHERE id = $1
-    `, [req.params.id]);
-    if (!rows[0]) return res.status(404).json({ error: 'Supplier not found' });
-    res.json(rows[0]);
-  } catch (err) {
-    console.error(`GET /api/suppliers/${req.params.id} error`, err);
-    res.status(500).json({ error: 'Failed to fetch supplier' });
-  }
-});
-
-// POST create a new supplier
 // POST /api/suppliers
-router.post('/', async (req, res) => {
-  const { name, website } = req.body;
-  if (!name) {
-    return res.status(400).json({ error: 'Name is required' });
+router.post('/', authenticate, async (req, res) => {
+  if (!req.user.roles.includes('admin')) {
+    return res.status(403).json({ message: "Admin access required" });
   }
-  try {
-    const { rows } = await db.query(`
-      INSERT INTO suppliers (name, website)
-      VALUES ($1, $2)
-      RETURNING id, name, website
-    `, [name, website || null]);
-    res.status(201).json(rows[0]);
-  } catch (err) {
-    console.error('POST /api/suppliers error', err);
-    res.status(500).json({ error: 'Failed to create supplier' });
-  }
-});
 
-// PATCH update a supplier
-// PATCH /api/suppliers/:id
-router.patch('/:id', async (req, res) => {
-  const fields = ['name','website'];
-  const sets = [];
-  const vals = [];
-  fields.forEach(f => {
-    if (req.body[f] !== undefined) {
-      sets.push(`${f} = $${sets.length + 1}`);
-      vals.push(req.body[f]);
-    }
-  });
-  if (!sets.length) {
-    return res.status(400).json({ error: 'No updatable fields' });
-  }
-  vals.push(req.params.id);
+  const { name, email, phone } = req.body;
   try {
-    const { rows } = await db.query(`
-      UPDATE suppliers
-      SET ${sets.join(', ')}
-      WHERE id = $${vals.length}
-      RETURNING id, name, website
-    `, vals);
-    if (!rows[0]) return res.status(404).json({ error: 'Supplier not found' });
-    res.json(rows[0]);
+    const result = await db.query(
+      'INSERT INTO suppliers (name, email, phone) VALUES ($1, $2, $3) RETURNING *',
+      [name, email, phone]
+    );
+    res.status(201).json(result.rows[0]);
   } catch (err) {
-    console.error(`PATCH /api/suppliers/${req.params.id} error`, err);
-    res.status(500).json({ error: 'Failed to update supplier' });
-  }
-});
-
-// DELETE a supplier
-// DELETE /api/suppliers/:id
-router.delete('/:id', async (req, res) => {
-  try {
-    const { rowCount } = await db.query(`
-      DELETE FROM suppliers
-      WHERE id = $1
-    `, [req.params.id]);
-    if (!rowCount) return res.status(404).json({ error: 'Supplier not found' });
-    res.sendStatus(204);
-  } catch (err) {
-    console.error(`DELETE /api/suppliers/${req.params.id} error`, err);
-    res.status(500).json({ error: 'Failed to delete supplier' });
+    console.error("Error creating supplier:", err);
+    res.status(500).json({ message: "Error saving supplier" });
   }
 });
 

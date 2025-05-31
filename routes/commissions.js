@@ -1,28 +1,30 @@
-const router = require('express').Router();
+const express = require('express');
+const router = express.Router();
 const db = require('../db');
+const { authenticate } = require('../middleware/auth');
 
 // GET /api/commissions
-router.get('/', async (req, res) => {
-  const { rows } = await db.query(`SELECT * FROM commissions ORDER BY computed_at DESC`);
-  res.json(rows);
-});
+router.get('/', authenticate, async (req, res) => {
+  const adminRoles = ['admin', 'finance', 'accountant', 'executive'];
+  const selfViewRoles = ['sales', 'employee', 'staff'];
 
-// POST /api/commissions
-router.post('/', async (req, res) => {
-  const { order_id, agent_id, sales_rep_id, rate, amount } = req.body;
-  const { rows } = await db.query(
-    `INSERT INTO commissions(order_id,agent_id,sales_rep_id,rate,amount)
-     VALUES($1,$2,$3,$4,$5) RETURNING *`,
-    [order_id, agent_id, sales_rep_id, rate, amount]
-  );
-  res.status(201).json(rows[0]);
-});
-
-// DELETE /api/commissions/:id
-router.delete('/:id', async (req, res) => {
-  await db.query(`DELETE FROM commissions WHERE id=$1`, [req.params.id]);
-  res.status(204).end();
+  try {
+    if (req.user.roles.some(role => adminRoles.includes(role))) {
+      const result = await db.query('SELECT * FROM commissions ORDER BY created_at DESC');
+      return res.json(result.rows);
+    } else if (req.user.roles.some(role => selfViewRoles.includes(role))) {
+      const result = await db.query(
+        'SELECT * FROM commissions WHERE user_id = $1 ORDER BY created_at DESC',
+        [req.user.id]
+      );
+      return res.json(result.rows);
+    } else {
+      return res.status(403).json({ message: "Access denied" });
+    }
+  } catch (err) {
+    console.error("Error fetching commissions:", err);
+    res.status(500).json({ message: "Error loading commissions" });
+  }
 });
 
 module.exports = router;
-
