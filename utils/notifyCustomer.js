@@ -31,11 +31,11 @@ async function notifyCustomerOfJobStatus(jobId, newStatus) {
       from: process.env.EMAIL_FROM,
       to: email,
       subject: `Your Job #${job_id} Status Update`,
-      html: \`
+      html: `
         <p>Hi \${full_name},</p>
         <p>Your production job (Order #\${order_id}) has been updated to: <strong>\${newStatus}</strong>.</p>
         <p>Thank you,<br/>Branding Shop Team</p>
-      \`
+      `
     };
 
     await transporter.sendMail(mailOptions);
