@@ -1,183 +1,83 @@
-// branding-shop-backend/routes/quotes.js
-
-const router = require('express').Router();
+const express = require('express');
+const router = express.Router();
 const db = require('../db');
+const auth = require('../middleware/auth');
+const { filterByOwnership, getOwnershipClause } = require('../middleware/userAccess');
 
-// GET all quotes
-router.get('/', async (req, res) => {
+// GET /api/quotes - list quotes (admins see all, users see their own)
+router.get('/', filterByOwnership(), async (req, res) => {
   try {
-    const { rows } = await db.query(`
-      SELECT
-        q.id,
-        q.customer_id,
-        u.name               AS customer_name,
-        u.phone_number       AS customer_phone,
-        q.product_id,
-        p.name               AS product_name,
-        p.sku                AS product_code,
-        q.quantity,
-        q.unit_price,
-        q.total,
-        q.status,
-        q.created_at
-      FROM quotes q
-      JOIN users    u ON u.id = q.customer_id
-      JOIN products p ON p.id = q.product_id
-      ORDER BY q.created_at DESC
-    `);
-    res.json(rows);
+    const baseQuery = 'SELECT * FROM quotes';
+    const { clause, values } = getOwnershipClause(req);
+    const finalQuery = clause ? `${baseQuery} ${clause}` : baseQuery;
+    const result = await db.query(finalQuery, values);
+    res.json(result.rows);
   } catch (err) {
-    console.error('GET /api/quotes error', err);
-    res.status(500).json({ error: 'Failed to fetch quotes' });
+    console.error("Error fetching quotes:", err);
+    res.status(500).json({ message: "Server error" });
   }
 });
 
-// GET single quote
-router.get('/:id', async (req, res) => {
-  try {
-    const { rows } = await db.query(
-      `SELECT
-         q.id,
-         q.customer_id,
-         u.name               AS customer_name,
-         u.phone_number       AS customer_phone,
-         q.product_id,
-         p.name               AS product_name,
-         p.sku                AS product_code,
-         q.quantity,
-         q.unit_price,
-         q.total,
-         q.status,
-         q.created_at
-       FROM quotes q
-       JOIN users    u ON u.id = q.customer_id
-       JOIN products p ON p.id = q.product_id
-       WHERE q.id = $1`,
-      [req.params.id]
-    );
-    if (!rows[0]) {
-      return res.status(404).json({ error: 'Quote not found' });
-    }
-    res.json(rows[0]);
-  } catch (err) {
-    console.error(`GET /api/quotes/${req.params.id} error`, err);
-    res.status(500).json({ error: 'Failed to fetch quote' });
-  }
-});
-
-// POST create new quote (calculates pricing server-side)
+// POST /api/quotes - create new quote
 router.post('/', async (req, res) => {
-  const customer_id = req.user.id;
-  const { product_id, quantity } = req.body;
-
-  if (!product_id || !quantity) {
-    return res.status(400).json({ error: 'Missing product_id or quantity' });
-  }
-
+  const { product_id, quantity, print_type } = req.body;
+  const userId = req.user.id;
   try {
-    // 1) Lookup product base price and category
-    const prodRes = await db.query(
-      `SELECT price, category_id
-         FROM products
-        WHERE id = $1`,
-      [product_id]
+    const result = await db.query(
+      'INSERT INTO quotes (user_id, product_id, quantity, print_type) VALUES ($1, $2, $3, $4) RETURNING *',
+      [userId, product_id, quantity, print_type]
     );
-    if (!prodRes.rows[0]) {
-      return res.status(400).json({ error: `Invalid product_id=${product_id}` });
-    }
-    let unitPrice = parseFloat(prodRes.rows[0].price);
-    const categoryId = prodRes.rows[0].category_id;
-
-    // 2) Fetch matching pricing rules
-    const rulesRes = await db.query(
-      `SELECT rule_type, unit_price AS rule_val
-         FROM pricing_rules
-        WHERE (product_category_id IS NULL OR product_category_id = $1)
-          AND $2 >= min_qty
-          AND ( $2 <= max_qty OR max_qty IS NULL )`,
-      [categoryId, quantity]
-    );
-
-    // 3) Apply each pricing rule
-    for (const { rule_type, rule_val } of rulesRes.rows) {
-      const val = parseFloat(rule_val);
-      if (rule_type === 'surcharge_pct') {
-        unitPrice *= (1 + val);
-      } else if (rule_type === 'discount_pct') {
-        unitPrice *= (1 - val);
-      } else if (rule_type === 'fixed') {
-        unitPrice = val;
-      } else if (rule_type === 'markup_fixed') {
-        unitPrice += val;
-      }
-    }
-
-    // 4) Compute total
-    const total = unitPrice * parseInt(quantity, 10);
-
-    // 5) Insert quote
-    const insertRes = await db.query(
-      `INSERT INTO quotes
-         (customer_id, product_id, quantity, unit_price, total, status)
-       VALUES ($1, $2, $3, $4, $5, 'pending')
-       RETURNING
-         id,
-         customer_id,
-         product_id,
-         quantity,
-         unit_price,
-         total,
-         status,
-         created_at`,
-      [customer_id, product_id, quantity, unitPrice, total]
-    );
-
-    res.status(201).json(insertRes.rows[0]);
+    res.status(201).json(result.rows[0]);
   } catch (err) {
-    console.error('POST /api/quotes error', err);
-    res.status(500).json({ error: 'Failed to create quote' });
+    console.error("Error creating quote:", err);
+    res.status(500).json({ message: "Failed to create quote" });
   }
 });
 
-// PATCH update quote status
-router.patch('/:id', async (req, res) => {
-  const { status } = req.body;
-  if (!status) {
-    return res.status(400).json({ error: 'Missing status field' });
-  }
-
+// GET /api/quotes/:id
+router.get('/:id', filterByOwnership(), async (req, res) => {
+  const { id } = req.params;
+  const { clause, values } = getOwnershipClause(req, 'AND');
   try {
-    const { rows } = await db.query(
-      `UPDATE quotes
-         SET status = $1, updated_at = now()
-       WHERE id = $2
-       RETURNING id, status`,
-      [status, req.params.id]
-    );
-    if (!rows[0]) {
-      return res.status(404).json({ error: 'Quote not found' });
-    }
-    res.json(rows[0]);
+    const result = await db.query(`SELECT * FROM quotes WHERE id = $1 ${clause}`, [id, ...values]);
+    if (result.rows.length === 0) return res.status(404).json({ message: "Quote not found" });
+    res.json(result.rows[0]);
   } catch (err) {
-    console.error(`PATCH /api/quotes/${req.params.id} error`, err);
-    res.status(500).json({ error: 'Failed to update quote' });
+    console.error("Error retrieving quote:", err);
+    res.status(500).json({ message: "Error retrieving quote" });
   }
 });
 
-// DELETE quote
-router.delete('/:id', async (req, res) => {
+// PUT /api/quotes/:id
+router.put('/:id', filterByOwnership(), async (req, res) => {
+  const { id } = req.params;
+  const { product_id, quantity, print_type } = req.body;
+  const { clause, values } = getOwnershipClause(req, 'AND');
+
   try {
-    const { rowCount } = await db.query(
-      `DELETE FROM quotes WHERE id = $1`,
-      [req.params.id]
+    const result = await db.query(
+      `UPDATE quotes SET product_id = $1, quantity = $2, print_type = $3 WHERE id = $4 ${clause} RETURNING *`,
+      [product_id, quantity, print_type, id, ...values]
     );
-    if (!rowCount) {
-      return res.status(404).json({ error: 'Quote not found' });
-    }
-    res.sendStatus(204);
+    if (result.rows.length === 0) return res.status(404).json({ message: "Quote not found or unauthorized" });
+    res.json(result.rows[0]);
   } catch (err) {
-    console.error(`DELETE /api/quotes/${req.params.id} error`, err);
-    res.status(500).json({ error: 'Failed to delete quote' });
+    console.error("Error updating quote:", err);
+    res.status(500).json({ message: "Error updating quote" });
+  }
+});
+
+// DELETE /api/quotes/:id
+router.delete('/:id', filterByOwnership(), async (req, res) => {
+  const { id } = req.params;
+  const { clause, values } = getOwnershipClause(req, 'AND');
+  try {
+    const result = await db.query(`DELETE FROM quotes WHERE id = $1 ${clause}`, [id, ...values]);
+    if (result.rowCount === 0) return res.status(404).json({ message: "Quote not found or unauthorized" });
+    res.json({ message: "Quote deleted" });
+  } catch (err) {
+    console.error("Error deleting quote:", err);
+    res.status(500).json({ message: "Error deleting quote" });
   }
 });
 
