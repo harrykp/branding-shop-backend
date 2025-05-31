@@ -1,37 +1,21 @@
-const router = require('express').Router();
+const express = require('express');
+const router = express.Router();
 const db = require('../db');
+const { authenticate } = require('../middleware/auth');
 
 // GET /api/departments
-router.get('/', async (req, res) => {
-  const { rows } = await db.query(`SELECT * FROM departments`);
-  res.json(rows);
-});
+router.get('/', authenticate, async (req, res) => {
+  if (!req.user.roles.includes('admin')) {
+    return res.status(403).json({ message: "Admin access only" });
+  }
 
-// POST /api/departments
-router.post('/', async (req, res) => {
-  const { name } = req.body;
-  const { rows } = await db.query(
-    `INSERT INTO departments(name) VALUES($1) RETURNING *`,
-    [name]
-  );
-  res.status(201).json(rows[0]);
-});
-
-// PATCH /api/departments/:id
-router.patch('/:id', async (req, res) => {
-  const { name } = req.body;
-  const { rows } = await db.query(
-    `UPDATE departments SET name=$1 WHERE id=$2 RETURNING *`,
-    [name, req.params.id]
-  );
-  res.json(rows[0]);
-});
-
-// DELETE /api/departments/:id
-router.delete('/:id', async (req, res) => {
-  await db.query(`DELETE FROM departments WHERE id=$1`, [req.params.id]);
-  res.status(204).end();
+  try {
+    const result = await db.query('SELECT * FROM departments ORDER BY name');
+    res.json(result.rows);
+  } catch (err) {
+    console.error("Departments error:", err);
+    res.status(500).json({ message: "Error fetching departments" });
+  }
 });
 
 module.exports = router;
-

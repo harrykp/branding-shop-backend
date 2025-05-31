@@ -1,14 +1,21 @@
-// branding-shop-backend/routes/reports_finance.js
-const router = require('express').Router();
+const express = require('express');
+const router = express.Router();
 const db = require('../db');
+const { authenticate } = require('../middleware/auth');
 
-router.get('/', async (req, res) => {
-  const pay = await db.query(`SELECT SUM(amount)::numeric(12,2) AS total_received FROM payment_transactions`);
-  const exp = await db.query(`SELECT SUM(amount)::numeric(12,2) AS total_expenses FROM expenses`);
-  res.json({
-    total_received: pay.rows[0].total_received || 0,
-    total_expenses: exp.rows[0].total_expenses || 0
-  });
+// GET /api/reports/finance
+router.get('/', authenticate, async (req, res) => {
+  if (!req.user.roles.includes('admin') && !req.user.roles.includes('finance')) {
+    return res.status(403).json({ message: "Access denied" });
+  }
+
+  try {
+    const result = await db.query('SELECT * FROM reports_finance ORDER BY date DESC');
+    res.json(result.rows);
+  } catch (err) {
+    console.error("Finance report error:", err);
+    res.status(500).json({ message: "Error fetching finance report" });
+  }
 });
 
 module.exports = router;

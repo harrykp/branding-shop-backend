@@ -1,15 +1,21 @@
-// branding-shop-backend/routes/reports_taxes.js
-const router = require('express').Router();
+const express = require('express');
+const router = express.Router();
 const db = require('../db');
+const { authenticate } = require('../middleware/auth');
 
-router.get('/', async (req, res) => {
-  const { rows } = await db.query(`
-    SELECT t.name AS tax, SUM(ot.amount)::numeric(12,2) AS total
-    FROM order_taxes ot
-    JOIN taxes t ON ot.tax_id=t.id
-    GROUP BY t.name ORDER BY t.name;
-  `);
-  res.json(rows);
+// GET /api/reports/taxes
+router.get('/', authenticate, async (req, res) => {
+  if (!req.user.roles.includes('admin') && !req.user.roles.includes('finance')) {
+    return res.status(403).json({ message: "Access denied" });
+  }
+
+  try {
+    const result = await db.query('SELECT * FROM reports_taxes ORDER BY date DESC');
+    res.json(result.rows);
+  } catch (err) {
+    console.error("Taxes report error:", err);
+    res.status(500).json({ message: "Error fetching tax report" });
+  }
 });
 
 module.exports = router;
