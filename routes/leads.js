@@ -17,7 +17,7 @@ router.get('/', filterByOwnership(), async (req, res) => {
   }
 });
 
-// POST /api/leads
+// POST /api/leads - create lead
 router.post('/', async (req, res) => {
   const { name, contact_info, interest_level } = req.body;
   const userId = req.user.id;
@@ -33,18 +33,20 @@ router.post('/', async (req, res) => {
   }
 });
 
-// PUT /api/leads/:id
+// PUT /api/leads/:id - update lead
 router.put('/:id', filterByOwnership(), async (req, res) => {
   const { id } = req.params;
   const { name, contact_info, interest_level } = req.body;
   const { clause, values } = getOwnershipClause(req, 'AND');
 
   try {
-    const result = await db.query(
-      `UPDATE leads SET name = $1, contact_info = $2, interest_level = $3 WHERE id = $4 \${clause} RETURNING *`,
-      [name, contact_info, interest_level, id, ...values]
-    );
-    if (result.rows.length === 0) return res.status(404).json({ message: "Lead not found or unauthorized" });
+    const query = `UPDATE leads SET name = $1, contact_info = $2, interest_level = $3 WHERE id = $4 ${clause} RETURNING *`;
+    const result = await db.query(query, [name, contact_info, interest_level, id, ...values]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: "Lead not found or unauthorized" });
+    }
+
     res.json(result.rows[0]);
   } catch (err) {
     console.error("Error updating lead:", err);
@@ -52,13 +54,19 @@ router.put('/:id', filterByOwnership(), async (req, res) => {
   }
 });
 
-// DELETE /api/leads/:id
+// DELETE /api/leads/:id - delete lead
 router.delete('/:id', filterByOwnership(), async (req, res) => {
   const { id } = req.params;
   const { clause, values } = getOwnershipClause(req, 'AND');
+
   try {
-    const result = await db.query(\`DELETE FROM leads WHERE id = $1 \${clause}\`, [id, ...values]);
-    if (result.rowCount === 0) return res.status(404).json({ message: "Lead not found or unauthorized" });
+    const query = `DELETE FROM leads WHERE id = $1 ${clause}`;
+    const result = await db.query(query, [id, ...values]);
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ message: "Lead not found or unauthorized" });
+    }
+
     res.json({ message: "Lead deleted" });
   } catch (err) {
     console.error("Error deleting lead:", err);
