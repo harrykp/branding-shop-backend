@@ -37,18 +37,36 @@ router.get('/', authenticate, async (req, res) => {
 // PUT /api/users/:id - Admins only
 router.put('/:id', authenticate, async (req, res) => {
   const { id } = req.params;
-  const { full_name, email } = req.body;
+  const { full_name, email, roles } = req.body;
 
   if (!req.user.roles.includes('admin')) {
     return res.status(403).json({ message: "Admin access required" });
   }
 
   try {
-    const result = await db.query(
-      'UPDATE users SET full_name = $1, email = $2 WHERE id = $3 RETURNING id, full_name, email',
+    // Update user details
+    await db.query(
+      'UPDATE users SET full_name = $1, email = $2 WHERE id = $3',
       [full_name, email, id]
     );
-    res.json(result.rows[0]);
+
+    // Update roles
+    if (Array.isArray(roles)) {
+      // Delete existing roles
+      await db.query('DELETE FROM user_roles WHERE user_id = $1', [id]);
+
+      // Insert new roles
+      for (const roleName of roles) {
+        // Get role ID
+        const roleRes = await db.query('SELECT id FROM roles WHERE name = $1', [roleName]);
+        if (roleRes.rows.length > 0) {
+          const roleId = roleRes.rows[0].id;
+          await db.query('INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)', [id, roleId]);
+        }
+      }
+    }
+
+    res.json({ message: "User updated successfully" });
   } catch (err) {
     console.error("Error updating user:", err);
     res.status(500).json({ message: "Error updating user" });
