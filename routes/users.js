@@ -10,24 +10,26 @@ router.get('/', authenticate, async (req, res) => {
       return res.status(403).json({ message: "Admin access required" });
     }
 
-    const result = await db.query(
-      'SELECT id, full_name, email, created_at FROM users ORDER BY created_at DESC'
-    );
+    const result = await db.query(`
+      SELECT id, name, email, phone_number, created_at
+      FROM users
+      ORDER BY created_at DESC
+    `);
 
-    const usersWithRoles = await Promise.all(
-      result.rows.map(async user => {
-        const roleRes = await db.query(
-          'SELECT r.name FROM user_roles ur JOIN roles r ON ur.role_id = r.id WHERE ur.user_id = $1',
-          [user.id]
-        );
-        return {
-          ...user,
-          roles: roleRes.rows.map(r => r.name)
-        };
-      })
-    );
+    const users = result.rows;
 
-    res.json(usersWithRoles);
+    const enriched = await Promise.all(users.map(async (user) => {
+      const roleResult = await db.query(
+        `SELECT r.name FROM user_roles ur JOIN roles r ON ur.role_id = r.id WHERE ur.user_id = $1`,
+        [user.id]
+      );
+      return {
+        ...user,
+        roles: roleResult.rows.map(r => r.name)
+      };
+    }));
+
+    res.json(enriched);
   } catch (err) {
     console.error("Error fetching users:", err);
     res.status(500).json({ message: "Server error while fetching users" });
@@ -37,31 +39,29 @@ router.get('/', authenticate, async (req, res) => {
 // PUT /api/users/:id - Admins only
 router.put('/:id', authenticate, async (req, res) => {
   const { id } = req.params;
-  const { full_name, email, roles } = req.body;
+  const { name, email, phone_number, roles } = req.body;
 
   if (!req.user.roles.includes('admin')) {
     return res.status(403).json({ message: "Admin access required" });
   }
 
   try {
-    // Update user details
+    // Update user fields
     await db.query(
-      'UPDATE users SET full_name = $1, email = $2 WHERE id = $3',
-      [full_name, email, id]
+      'UPDATE users SET name = $1, email = $2, phone_number = $3 WHERE id = $4',
+      [name, email, phone_number, id]
     );
 
-    // Update roles
     if (Array.isArray(roles)) {
-      // Delete existing roles
       await db.query('DELETE FROM user_roles WHERE user_id = $1', [id]);
 
-      // Insert new roles
       for (const roleName of roles) {
-        // Get role ID
         const roleRes = await db.query('SELECT id FROM roles WHERE name = $1', [roleName]);
         if (roleRes.rows.length > 0) {
-          const roleId = roleRes.rows[0].id;
-          await db.query('INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)', [id, roleId]);
+          await db.query('INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)', [
+            id,
+            roleRes.rows[0].id,
+          ]);
         }
       }
     }
@@ -82,6 +82,7 @@ router.delete('/:id', authenticate, async (req, res) => {
   }
 
   try {
+    await db.query('DELETE FROM user_roles WHERE user_id = $1', [id]); // clean roles first
     await db.query('DELETE FROM users WHERE id = $1', [id]);
     res.json({ message: "User deleted successfully" });
   } catch (err) {
