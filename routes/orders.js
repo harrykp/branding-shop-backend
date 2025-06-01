@@ -1,11 +1,22 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
-const auth = require('../middleware/auth');
+const { authenticate, requireAdmin } = require('../middleware/auth');
 const { filterByOwnership, getOwnershipClause } = require('../middleware/userAccess');
 
+// GET /api/orders/count - Admin only
+router.get('/count', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const result = await db.query('SELECT COUNT(*) FROM orders');
+    res.json({ count: parseInt(result.rows[0].count, 10) });
+  } catch (err) {
+    console.error("Order count error:", err);
+    res.status(500).json({ message: "Error fetching order count" });
+  }
+});
+
 // GET /api/orders - list orders (admins see all, users see their own)
-router.get('/', filterByOwnership(), async (req, res) => {
+router.get('/', authenticate, filterByOwnership(), async (req, res) => {
   try {
     const baseQuery = 'SELECT * FROM orders';
     const { clause, values } = getOwnershipClause(req);
@@ -19,7 +30,7 @@ router.get('/', filterByOwnership(), async (req, res) => {
 });
 
 // POST /api/orders - create new order
-router.post('/', async (req, res) => {
+router.post('/', authenticate, async (req, res) => {
   const { quote_id, total_amount, status } = req.body;
   const userId = req.user.id;
   try {
@@ -35,7 +46,7 @@ router.post('/', async (req, res) => {
 });
 
 // GET /api/orders/:id
-router.get('/:id', filterByOwnership(), async (req, res) => {
+router.get('/:id', authenticate, filterByOwnership(), async (req, res) => {
   const { id } = req.params;
   const { clause, values } = getOwnershipClause(req, 'AND');
   try {
@@ -49,7 +60,7 @@ router.get('/:id', filterByOwnership(), async (req, res) => {
 });
 
 // PUT /api/orders/:id
-router.put('/:id', filterByOwnership(), async (req, res) => {
+router.put('/:id', authenticate, filterByOwnership(), async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
   const { clause, values } = getOwnershipClause(req, 'AND');
@@ -68,7 +79,7 @@ router.put('/:id', filterByOwnership(), async (req, res) => {
 });
 
 // DELETE /api/orders/:id
-router.delete('/:id', filterByOwnership(), async (req, res) => {
+router.delete('/:id', authenticate, filterByOwnership(), async (req, res) => {
   const { id } = req.params;
   const { clause, values } = getOwnershipClause(req, 'AND');
   try {
@@ -80,17 +91,5 @@ router.delete('/:id', filterByOwnership(), async (req, res) => {
     res.status(500).json({ message: "Error deleting order" });
   }
 });
-
-// GET /api/orders/count
-router.get('/count', requireAdmin, async (req, res) => {
-  try {
-    const result = await db.query('SELECT COUNT(*) FROM orders');
-    res.json({ count: parseInt(result.rows[0].count, 10) });
-  } catch (err) {
-    console.error("Order count error:", err);
-    res.status(500).json({ message: "Error fetching order count" });
-  }
-});
-
 
 module.exports = router;
