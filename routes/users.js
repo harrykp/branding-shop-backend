@@ -3,7 +3,7 @@ const router = express.Router();
 const db = require('../db');
 const { authenticate } = require('../middleware/auth');
 
-// GET /api/users
+// GET /api/users - Admins only
 router.get('/', authenticate, async (req, res) => {
   try {
     if (!req.user.roles.includes('admin')) {
@@ -18,7 +18,7 @@ router.get('/', authenticate, async (req, res) => {
   }
 });
 
-// PUT /api/users/:id
+// PUT /api/users/:id - Admins only
 router.put('/:id', authenticate, async (req, res) => {
   const { id } = req.params;
   const { full_name, email } = req.body;
@@ -39,7 +39,7 @@ router.put('/:id', authenticate, async (req, res) => {
   }
 });
 
-// DELETE /api/users/:id
+// DELETE /api/users/:id - Admins only
 router.delete('/:id', authenticate, async (req, res) => {
   const { id } = req.params;
 
@@ -56,9 +56,13 @@ router.delete('/:id', authenticate, async (req, res) => {
   }
 });
 
-// GET /api/users/count
-router.get('/count', requireAdmin, async (req, res) => {
+// GET /api/users/count - Admins only
+router.get('/count', authenticate, async (req, res) => {
   try {
+    if (!req.user.roles.includes('admin')) {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+
     const result = await db.query('SELECT COUNT(*) FROM users');
     res.json({ count: parseInt(result.rows[0].count, 10) });
   } catch (err) {
@@ -66,6 +70,5 @@ router.get('/count', requireAdmin, async (req, res) => {
     res.status(500).json({ message: "Error fetching user count" });
   }
 });
-
 
 module.exports = router;
