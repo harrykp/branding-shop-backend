@@ -3,22 +3,7 @@ const router = express.Router();
 const db = require('../db');
 const { authenticate } = require('../middleware/auth');
 
-// GET /api/users/count - Admins only
-router.get('/count', authenticate, async (req, res) => {
-  try {
-    if (!req.user.roles.includes('admin')) {
-      return res.status(403).json({ message: "Admin access required" });
-    }
-
-    const result = await db.query('SELECT COUNT(*) FROM users');
-    res.json({ count: parseInt(result.rows[0].count, 10) });
-  } catch (err) {
-    console.error("User count error:", err);
-    res.status(500).json({ message: "Error fetching user count" });
-  }
-});
-
-// GET /api/users - Admins only
+// GET /api/users - Admins only, returns full user list with roles
 router.get('/', authenticate, async (req, res) => {
   try {
     if (!req.user.roles.includes('admin')) {
@@ -26,12 +11,26 @@ router.get('/', authenticate, async (req, res) => {
     }
 
     const result = await db.query(
-      'SELECT id, email, full_name, created_at FROM users ORDER BY created_at DESC'
+      'SELECT id, full_name, email, created_at FROM users ORDER BY created_at DESC'
     );
-    res.json(result.rows);
+
+    const usersWithRoles = await Promise.all(
+      result.rows.map(async user => {
+        const roleRes = await db.query(
+          'SELECT r.name FROM user_roles ur JOIN roles r ON ur.role_id = r.id WHERE ur.user_id = $1',
+          [user.id]
+        );
+        return {
+          ...user,
+          roles: roleRes.rows.map(r => r.name)
+        };
+      })
+    );
+
+    res.json(usersWithRoles);
   } catch (err) {
     console.error("Error fetching users:", err);
-    res.status(500).json({ message: "Server error" });
+    res.status(500).json({ message: "Server error while fetching users" });
   }
 });
 
@@ -70,6 +69,21 @@ router.delete('/:id', authenticate, async (req, res) => {
   } catch (err) {
     console.error("Error deleting user:", err);
     res.status(500).json({ message: "Error deleting user" });
+  }
+});
+
+// GET /api/users/count - Admins only
+router.get('/count', authenticate, async (req, res) => {
+  try {
+    if (!req.user.roles.includes('admin')) {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+
+    const result = await db.query('SELECT COUNT(*) FROM users');
+    res.json({ count: parseInt(result.rows[0].count, 10) });
+  } catch (err) {
+    console.error("User count error:", err);
+    res.status(500).json({ message: "Error fetching user count" });
   }
 });
 
