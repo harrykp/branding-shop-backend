@@ -56,4 +56,16 @@ router.delete('/:id', authenticate, async (req, res) => {
   }
 });
 
+// GET /api/users/count
+router.get('/count', requireAdmin, async (req, res) => {
+  try {
+    const result = await db.query('SELECT COUNT(*) FROM users');
+    res.json({ count: parseInt(result.rows[0].count, 10) });
+  } catch (err) {
+    console.error("User count error:", err);
+    res.status(500).json({ message: "Error fetching user count" });
+  }
+});
+
+
 module.exports = router;
