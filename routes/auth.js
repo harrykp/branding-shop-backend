@@ -2,51 +2,47 @@ const router = require('express').Router();
 const db = require('../db');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
+const nodemailer = require('nodemailer');
+const crypto = require('crypto');
 
 // POST /api/auth/register
 router.post('/register', async (req, res) => {
-const { name, email, phone_number, password, security_question, security_answer } = req.body;
+  const { name, email, phone_number, password, security_question, security_answer } = req.body;
 
-const passwordHash = await bcrypt.hash(password, 10);
-const answerHash = await bcrypt.hash(security_answer, 10);
+  const passwordHash = await bcrypt.hash(password, 10);
+  const answerHash = await bcrypt.hash(security_answer, 10);
 
-const { rows } = await db.query(
-  `INSERT INTO users(name, email, phone_number, password_hash, security_question, security_answer_hash)
-   VALUES($1, $2, $3, $4, $5, $6)
-   RETURNING id, name, email, phone_number, security_question`,
-  [name, email, phone_number, passwordHash, security_question, answerHash]
-);
+  const { rows } = await db.query(
+    `INSERT INTO users(name, email, phone_number, password_hash, security_question, security_answer_hash)
+     VALUES($1, $2, $3, $4, $5, $6)
+     RETURNING id, name, email, phone_number, security_question`,
+    [name, email, phone_number, passwordHash, security_question, answerHash]
+  );
 
   const user = rows[0];
 
-  // assign default 'customer' role
-  const { rows: roleRows } = await db.query(
-    `SELECT id FROM roles WHERE name='customer'`
-  );
+  // Assign default 'customer' role
+  const { rows: roleRows } = await db.query(`SELECT id FROM roles WHERE name='customer'`);
   if (roleRows[0]) {
-    await db.query(
-      `INSERT INTO user_roles(user_id,role_id) VALUES($1,$2)`,
-      [user.id, roleRows[0].id]
-    );
+    await db.query(`INSERT INTO user_roles(user_id, role_id) VALUES ($1, $2)`, [user.id, roleRows[0].id]);
   }
 
-  // fetch roles
+  // Fetch roles
   const { rows: userRoles } = await db.query(
-    `SELECT r.name
-     FROM user_roles ur
-     JOIN roles r ON ur.role_id=r.id
-     WHERE ur.user_id=$1`,
+    `SELECT r.name FROM user_roles ur JOIN roles r ON ur.role_id = r.id WHERE ur.user_id = $1`,
     [user.id]
   );
+  const roles = userRoles.map(r => r.name);
 
-  const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET);
+  const token = jwt.sign({ userId: user.id, roles }, process.env.JWT_SECRET, { expiresIn: '7d' });
+
   res.status(201).json({
     user: {
       id: user.id,
       name: user.name,
       email: user.email,
       phone_number: user.phone_number,
-      roles: userRoles.map(r => r.name)
+      roles
     },
     token
   });
@@ -58,33 +54,30 @@ router.post('/login', async (req, res) => {
   const { rows } = await db.query(`SELECT * FROM users WHERE email=$1`, [email]);
   const user = rows[0];
   if (!user) return res.status(401).json({ error: 'Invalid credentials' });
+
   const valid = await bcrypt.compare(password, user.password_hash);
   if (!valid) return res.status(401).json({ error: 'Invalid credentials' });
 
-  // fetch roles
+  // Fetch roles
   const { rows: userRoles } = await db.query(
-    `SELECT r.name
-     FROM user_roles ur
-     JOIN roles r ON ur.role_id=r.id
-     WHERE ur.user_id=$1`,
+    `SELECT r.name FROM user_roles ur JOIN roles r ON ur.role_id = r.id WHERE ur.user_id = $1`,
     [user.id]
   );
+  const roles = userRoles.map(r => r.name);
 
-  const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET);
+  const token = jwt.sign({ userId: user.id, roles }, process.env.JWT_SECRET, { expiresIn: '7d' });
+
   res.json({
     user: {
       id: user.id,
       name: user.name,
       email: user.email,
       phone_number: user.phone_number,
-      roles: userRoles.map(r => r.name)
+      roles
     },
     token
   });
 });
-
-const nodemailer = require('nodemailer');
-const crypto = require('crypto');
 
 // GET /api/auth/security-question?email=
 router.get('/security-question', async (req, res) => {
@@ -97,8 +90,7 @@ router.get('/security-question', async (req, res) => {
   res.json({ question: rows[0].security_question });
 });
 
-
-// POST /api/auth/reset-password (request reset link)
+// POST /api/auth/reset-password
 router.post('/reset-password', async (req, res) => {
   const { email } = req.body;
 
@@ -107,7 +99,7 @@ router.post('/reset-password', async (req, res) => {
   if (!user) return res.status(200).json({ message: "If that email exists, a reset link has been sent." });
 
   const resetToken = crypto.randomBytes(32).toString('hex');
-  const expiry = Date.now() + 60 * 60 * 1000; // 1 hour
+  const expiry = Date.now() + 60 * 60 * 1000;
 
   await db.query(
     'UPDATE users SET reset_token = $1, reset_token_expiry = $2 WHERE id = $3',
@@ -137,9 +129,7 @@ router.post('/reset-password', async (req, res) => {
     </p>
     <p>If you didn't request this, you can safely ignore this email.</p>
     <p>– The Branding Shop Team</p>
-  </div>
-`
-
+  </div>`
   });
 
   res.status(200).json({ message: "If that email exists, a reset link has been sent." });
@@ -149,27 +139,19 @@ router.post('/reset-password', async (req, res) => {
 router.post('/reset-password/confirm', async (req, res) => {
   const { email, token, newPassword, security_answer } = req.body;
 
-  // Find user with matching token + email
   const { rows } = await db.query(
     'SELECT * FROM users WHERE email = $1 AND reset_token = $2 AND reset_token_expiry > $3',
     [email, token, Date.now()]
   );
 
   const user = rows[0];
-  if (!user) {
-    return res.status(400).json({ message: "Invalid or expired reset token." });
-  }
+  if (!user) return res.status(400).json({ message: "Invalid or expired reset token." });
 
-  // Check security answer
   const validAnswer = await bcrypt.compare(security_answer, user.security_answer_hash);
-  if (!validAnswer) {
-    return res.status(403).json({ message: "Incorrect answer to the security question." });
-  }
+  if (!validAnswer) return res.status(403).json({ message: "Incorrect answer to the security question." });
 
-  // Hash new password
   const hashed = await bcrypt.hash(newPassword, 10);
 
-  // Update password and clear reset token
   await db.query(
     'UPDATE users SET password_hash = $1, reset_token = NULL, reset_token_expiry = NULL WHERE id = $2',
     [hashed, user.id]
@@ -178,6 +160,7 @@ router.post('/reset-password/confirm', async (req, res) => {
   res.status(200).json({ message: "Password successfully reset. You can now log in." });
 });
 
+// PUT /api/auth/update-profile
 router.put('/update-profile', async (req, res) => {
   const token = req.headers.authorization?.split(' ')[1];
   if (!token) return res.status(401).json({ message: "Missing token" });
@@ -200,6 +183,5 @@ router.put('/update-profile', async (req, res) => {
 
   res.json({ message: "Profile updated successfully." });
 });
-
 
 module.exports = router;
