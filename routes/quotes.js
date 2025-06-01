@@ -81,4 +81,16 @@ router.delete('/:id', filterByOwnership(), async (req, res) => {
   }
 });
 
+// GET /api/quotes/count
+router.get('/count', requireAdmin, async (req, res) => {
+  try {
+    const result = await db.query('SELECT COUNT(*) FROM quotes');
+    res.json({ count: parseInt(result.rows[0].count, 10) });
+  } catch (err) {
+    console.error("Quote count error:", err);
+    res.status(500).json({ message: "Error fetching quote count" });
+  }
+});
+
+
 module.exports = router;
