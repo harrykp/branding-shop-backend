@@ -3,6 +3,21 @@ const router = express.Router();
 const db = require('../db');
 const { authenticate } = require('../middleware/auth');
 
+// GET /api/users/count - Admins only
+router.get('/count', authenticate, async (req, res) => {
+  try {
+    if (!req.user.roles.includes('admin')) {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+
+    const result = await db.query('SELECT COUNT(*) FROM users');
+    res.json({ count: parseInt(result.rows[0].count, 10) });
+  } catch (err) {
+    console.error("User count error:", err);
+    res.status(500).json({ message: "Error fetching user count" });
+  }
+});
+
 // GET /api/users - Admins only
 router.get('/', authenticate, async (req, res) => {
   try {
@@ -10,7 +25,9 @@ router.get('/', authenticate, async (req, res) => {
       return res.status(403).json({ message: "Admin access required" });
     }
 
-    const result = await db.query('SELECT id, email, full_name, created_at FROM users ORDER BY created_at DESC');
+    const result = await db.query(
+      'SELECT id, email, full_name, created_at FROM users ORDER BY created_at DESC'
+    );
     res.json(result.rows);
   } catch (err) {
     console.error("Error fetching users:", err);
@@ -53,21 +70,6 @@ router.delete('/:id', authenticate, async (req, res) => {
   } catch (err) {
     console.error("Error deleting user:", err);
     res.status(500).json({ message: "Error deleting user" });
-  }
-});
-
-// GET /api/users/count - Admins only
-router.get('/count', authenticate, async (req, res) => {
-  try {
-    if (!req.user.roles.includes('admin')) {
-      return res.status(403).json({ message: "Admin access required" });
-    }
-
-    const result = await db.query('SELECT COUNT(*) FROM users');
-    res.json({ count: parseInt(result.rows[0].count, 10) });
-  } catch (err) {
-    console.error("User count error:", err);
-    res.status(500).json({ message: "Error fetching user count" });
   }
 });
 
