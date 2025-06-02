@@ -48,7 +48,7 @@ const protectedRoutes = [
   ['expenses', 'expenses'],
   ['daily-transactions', 'transactions'],
   ['taxes', 'taxes'],
-  ['reports', 'reports'],                // Reports index + summary
+  ['reports', 'reports'],
   ['complaints', 'complaints'],
   ['cart', 'cart'],
   ['checkout', 'checkout'],
@@ -66,7 +66,8 @@ const protectedRoutes = [
   ['payment-transactions', 'payment_transactions'],
   ['payment-types', 'payment_types'],
   ['payrolls', 'payrolls'],
-  ['vacation-requests', 'vacation_requests']
+  ['vacation-requests', 'vacation_requests'],
+  ['customers', 'customers'] // ✅ Newly added protected customers route
 ];
 
 // Register all protected routes
