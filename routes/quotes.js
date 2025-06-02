@@ -15,10 +15,17 @@ router.get('/count', authenticate, requireAdmin, async (req, res) => {
   }
 });
 
-// GET /api/quotes - list quotes (admins see all, users see their own)
+// GET /api/quotes - List quotes with joins
 router.get('/', authenticate, filterByOwnership(), async (req, res) => {
   try {
-    const baseQuery = 'SELECT * FROM quotes';
+    const baseQuery = `
+      SELECT q.*, 
+             p.name AS product_name, 
+             c.name AS category_name 
+      FROM quotes q
+      LEFT JOIN products p ON q.product_id = p.id
+      LEFT JOIN product_categories c ON p.category_id = c.id
+    `;
     const { clause, values } = getOwnershipClause(req);
     const finalQuery = clause ? `${baseQuery} ${clause}` : baseQuery;
     const result = await db.query(finalQuery, values);
@@ -29,14 +36,14 @@ router.get('/', authenticate, filterByOwnership(), async (req, res) => {
   }
 });
 
-// POST /api/quotes - create new quote
+// POST /api/quotes - Create quote
 router.post('/', authenticate, async (req, res) => {
-  const { product_id, quantity, print_type } = req.body;
+  const { product_id, quantity } = req.body;
   const userId = req.user.id;
   try {
     const result = await db.query(
-      'INSERT INTO quotes (user_id, product_id, quantity, print_type) VALUES ($1, $2, $3, $4) RETURNING *',
-      [userId, product_id, quantity, print_type]
+      'INSERT INTO quotes (user_id, product_id, quantity) VALUES ($1, $2, $3) RETURNING *',
+      [userId, product_id, quantity]
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
@@ -45,15 +52,21 @@ router.post('/', authenticate, async (req, res) => {
   }
 });
 
-// GET /api/quotes/:id - fetch single quote
+// GET /api/quotes/:id
 router.get('/:id', authenticate, filterByOwnership(), async (req, res) => {
   const { id } = req.params;
   const { clause, values } = getOwnershipClause(req, 'AND');
   try {
-    const result = await db.query(
-      `SELECT * FROM quotes WHERE id = $1 ${clause}`,
-      [id, ...values]
-    );
+    const query = `
+      SELECT q.*, 
+             p.name AS product_name, 
+             c.name AS category_name 
+      FROM quotes q
+      LEFT JOIN products p ON q.product_id = p.id
+      LEFT JOIN product_categories c ON p.category_id = c.id
+      WHERE q.id = $1 ${clause}
+    `;
+    const result = await db.query(query, [id, ...values]);
     if (result.rows.length === 0) return res.status(404).json({ message: "Quote not found" });
     res.json(result.rows[0]);
   } catch (err) {
@@ -62,15 +75,15 @@ router.get('/:id', authenticate, filterByOwnership(), async (req, res) => {
   }
 });
 
-// PUT /api/quotes/:id - update quote
+// PUT /api/quotes/:id - Update quote
 router.put('/:id', authenticate, filterByOwnership(), async (req, res) => {
   const { id } = req.params;
-  const { product_id, quantity, print_type } = req.body;
+  const { product_id, quantity } = req.body;
   const { clause, values } = getOwnershipClause(req, 'AND');
   try {
     const result = await db.query(
-      `UPDATE quotes SET product_id = $1, quantity = $2, print_type = $3 WHERE id = $4 ${clause} RETURNING *`,
-      [product_id, quantity, print_type, id, ...values]
+      `UPDATE quotes SET product_id = $1, quantity = $2 WHERE id = $3 ${clause} RETURNING *`,
+      [product_id, quantity, id, ...values]
     );
     if (result.rows.length === 0) return res.status(404).json({ message: "Quote not found or unauthorized" });
     res.json(result.rows[0]);
@@ -80,15 +93,12 @@ router.put('/:id', authenticate, filterByOwnership(), async (req, res) => {
   }
 });
 
-// DELETE /api/quotes/:id - delete quote
+// DELETE /api/quotes/:id - Delete quote
 router.delete('/:id', authenticate, filterByOwnership(), async (req, res) => {
   const { id } = req.params;
   const { clause, values } = getOwnershipClause(req, 'AND');
   try {
-    const result = await db.query(
-      `DELETE FROM quotes WHERE id = $1 ${clause}`,
-      [id, ...values]
-    );
+    const result = await db.query(`DELETE FROM quotes WHERE id = $1 ${clause}`, [id, ...values]);
     if (result.rowCount === 0) return res.status(404).json({ message: "Quote not found or unauthorized" });
     res.json({ message: "Quote deleted" });
   } catch (err) {
