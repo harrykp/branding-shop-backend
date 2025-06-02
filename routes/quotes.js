@@ -1,109 +1,88 @@
+// routes/quotes.js
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
-const { authenticate, requireAdmin } = require('../middleware/auth');
-const { filterByOwnership, getOwnershipClause } = require('../middleware/userAccess');
+const { authenticate } = require('../middleware/auth');
 
-// GET /api/quotes/count - Admins only
-router.get('/count', authenticate, requireAdmin, async (req, res) => {
-  try {
-    const result = await db.query('SELECT COUNT(*) FROM quotes');
-    res.json({ count: parseInt(result.rows[0].count, 10) });
-  } catch (err) {
-    console.error("Quote count error:", err);
-    res.status(500).json({ message: "Error fetching quote count" });
-  }
-});
+// GET all quotes with pagination, filtering, and joins
+router.get('/', authenticate, async (req, res) => {
+  const { page = 1, limit = 10, search = '' } = req.query;
+  const offset = (page - 1) * limit;
+  const filter = `%${search.toLowerCase()}%`;
 
-// GET /api/quotes - List quotes with joins
-router.get('/', authenticate, filterByOwnership(), async (req, res) => {
   try {
-    const baseQuery = `
-      SELECT q.*, 
-             p.name AS product_name, 
-             c.name AS category_name 
+    const dataQuery = `
+      SELECT q.*, c.name AS customer_name, u.name AS sales_rep_name
       FROM quotes q
-      LEFT JOIN products p ON q.product_id = p.id
-      LEFT JOIN product_categories c ON p.category_id = c.id
+      JOIN customers c ON q.customer_id = c.id
+      JOIN users u ON q.sales_rep_id = u.id
+      WHERE LOWER(c.name) LIKE $1 OR LOWER(u.name) LIKE $1
+      ORDER BY q.created_at DESC
+      LIMIT $2 OFFSET $3
     `;
-    const { clause, values } = getOwnershipClause(req);
-    const finalQuery = clause ? `${baseQuery} ${clause}` : baseQuery;
-    const result = await db.query(finalQuery, values);
-    res.json(result.rows);
+
+    const countQuery = `
+      SELECT COUNT(*)
+      FROM quotes q
+      JOIN customers c ON q.customer_id = c.id
+      JOIN users u ON q.sales_rep_id = u.id
+      WHERE LOWER(c.name) LIKE $1 OR LOWER(u.name) LIKE $1
+    `;
+
+    const [dataResult, countResult] = await Promise.all([
+      db.query(dataQuery, [filter, limit, offset]),
+      db.query(countQuery, [filter])
+    ]);
+
+    res.json({ data: dataResult.rows, total: parseInt(countResult.rows[0].count, 10) });
   } catch (err) {
-    console.error("Error fetching quotes:", err);
-    res.status(500).json({ message: "Server error" });
+    console.error('Error loading quotes:', err);
+    res.status(500).json({ error: 'Failed to load quotes' });
   }
 });
 
-// POST /api/quotes - Create quote
+// POST create new quote
 router.post('/', authenticate, async (req, res) => {
-  const { product_id, quantity } = req.body;
-  const userId = req.user.id;
+  const { customer_id, sales_rep_id, status, total } = req.body;
   try {
     const result = await db.query(
-      'INSERT INTO quotes (user_id, product_id, quantity) VALUES ($1, $2, $3) RETURNING *',
-      [userId, product_id, quantity]
+      'INSERT INTO quotes (customer_id, sales_rep_id, status, total, created_at) VALUES ($1, $2, $3, $4, NOW()) RETURNING *',
+      [customer_id, sales_rep_id, status, total]
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
-    console.error("Error creating quote:", err);
-    res.status(500).json({ message: "Failed to create quote" });
+    console.error('Error creating quote:', err);
+    res.status(500).json({ error: 'Failed to create quote' });
   }
 });
 
-// GET /api/quotes/:id
-router.get('/:id', authenticate, filterByOwnership(), async (req, res) => {
+// PUT update quote
+router.put('/:id', authenticate, async (req, res) => {
   const { id } = req.params;
-  const { clause, values } = getOwnershipClause(req, 'AND');
-  try {
-    const query = `
-      SELECT q.*, 
-             p.name AS product_name, 
-             c.name AS category_name 
-      FROM quotes q
-      LEFT JOIN products p ON q.product_id = p.id
-      LEFT JOIN product_categories c ON p.category_id = c.id
-      WHERE q.id = $1 ${clause}
-    `;
-    const result = await db.query(query, [id, ...values]);
-    if (result.rows.length === 0) return res.status(404).json({ message: "Quote not found" });
-    res.json(result.rows[0]);
-  } catch (err) {
-    console.error("Error retrieving quote:", err);
-    res.status(500).json({ message: "Error retrieving quote" });
-  }
-});
-
-// PUT /api/quotes/:id - Update quote
-router.put('/:id', authenticate, filterByOwnership(), async (req, res) => {
-  const { id } = req.params;
-  const { product_id, quantity } = req.body;
-  const { clause, values } = getOwnershipClause(req, 'AND');
+  const { customer_id, sales_rep_id, status, total } = req.body;
   try {
     const result = await db.query(
-      `UPDATE quotes SET product_id = $1, quantity = $2 WHERE id = $3 ${clause} RETURNING *`,
-      [product_id, quantity, id, ...values]
+      'UPDATE quotes SET customer_id = $1, sales_rep_id = $2, status = $3, total = $4 WHERE id = $5 RETURNING *',
+      [customer_id, sales_rep_id, status, total, id]
     );
-    if (result.rows.length === 0) return res.status(404).json({ message: "Quote not found or unauthorized" });
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Quote not found' });
     res.json(result.rows[0]);
   } catch (err) {
-    console.error("Error updating quote:", err);
-    res.status(500).json({ message: "Error updating quote" });
+    console.error('Error updating quote:', err);
+    res.status(500).json({ error: 'Failed to update quote' });
   }
 });
 
-// DELETE /api/quotes/:id - Delete quote
-router.delete('/:id', authenticate, filterByOwnership(), async (req, res) => {
+// DELETE quote
+router.delete('/:id', authenticate, async (req, res) => {
   const { id } = req.params;
-  const { clause, values } = getOwnershipClause(req, 'AND');
   try {
-    const result = await db.query(`DELETE FROM quotes WHERE id = $1 ${clause}`, [id, ...values]);
-    if (result.rowCount === 0) return res.status(404).json({ message: "Quote not found or unauthorized" });
-    res.json({ message: "Quote deleted" });
+    const result = await db.query('DELETE FROM quotes WHERE id = $1 RETURNING *', [id]);
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Quote not found' });
+    res.json({ success: true });
   } catch (err) {
-    console.error("Error deleting quote:", err);
-    res.status(500).json({ message: "Error deleting quote" });
+    console.error('Error deleting quote:', err);
+    res.status(500).json({ error: 'Failed to delete quote' });
   }
 });
 
