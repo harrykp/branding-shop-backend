@@ -1,4 +1,4 @@
-// routes/quotes.js
+// /routes/quotes.js
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
@@ -30,7 +30,6 @@ router.get('/', async (req, res) => {
 
     const quotes = quotesResult.rows;
 
-    // Attach quote items
     for (const quote of quotes) {
       const itemsRes = await db.query(
         `SELECT qi.*, p.name AS product_name FROM quote_items qi
@@ -117,6 +116,7 @@ router.put('/:id', async (req, res) => {
 // DELETE quote
 router.delete('/:id', async (req, res) => {
   try {
+    await db.query(`DELETE FROM quote_items WHERE quote_id=$1`, [req.params.id]);
     await db.query(`DELETE FROM quotes WHERE id=$1`, [req.params.id]);
     res.sendStatus(204);
   } catch (err) {
