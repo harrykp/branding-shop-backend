@@ -1,94 +1,80 @@
+// routes/orders.js
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
-const { authenticate, requireAdmin } = require('../middleware/auth');
-const { filterByOwnership, getOwnershipClause } = require('../middleware/userAccess');
 
-// GET /api/orders/count - Admin only
-router.get('/count', authenticate, requireAdmin, async (req, res) => {
+// GET /api/orders?page=&limit=&search=
+router.get('/', async (req, res) => {
+  const page = parseInt(req.query.page) || 1;
+  const limit = parseInt(req.query.limit) || 10;
+  const offset = (page - 1) * limit;
+  const search = `%${req.query.search || ''}%`;
+
   try {
-    const result = await db.query('SELECT COUNT(*) FROM orders');
-    res.json({ count: parseInt(result.rows[0].count, 10) });
+    const countResult = await db.query(
+      `SELECT COUNT(*) FROM orders o
+       JOIN customers c ON o.customer_id = c.id
+       JOIN users u ON o.sales_rep_id = u.id
+       WHERE c.name ILIKE $1 OR u.name ILIKE $1`, [search]
+    );
+
+    const ordersResult = await db.query(
+      `SELECT o.*, c.name AS customer_name, u.name AS sales_rep_name
+       FROM orders o
+       JOIN customers c ON o.customer_id = c.id
+       JOIN users u ON o.sales_rep_id = u.id
+       WHERE c.name ILIKE $1 OR u.name ILIKE $1
+       ORDER BY o.created_at DESC
+       LIMIT $2 OFFSET $3`, [search, limit, offset]
+    );
+
+    res.json({ orders: ordersResult.rows, total: parseInt(countResult.rows[0].count) });
   } catch (err) {
-    console.error("Order count error:", err);
-    res.status(500).json({ message: "Error fetching order count" });
+    console.error('Error fetching orders:', err);
+    res.status(500).json({ error: 'Failed to fetch orders' });
   }
 });
 
-// GET /api/orders - list orders (admins see all, users see their own)
-router.get('/', authenticate, filterByOwnership(), async (req, res) => {
-  try {
-    const baseQuery = 'SELECT * FROM orders';
-    const { clause, values } = getOwnershipClause(req);
-    const finalQuery = clause ? `${baseQuery} ${clause}` : baseQuery;
-    const result = await db.query(finalQuery, values);
-    res.json(result.rows);
-  } catch (err) {
-    console.error("Error fetching orders:", err);
-    res.status(500).json({ message: "Server error" });
-  }
-});
-
-// POST /api/orders - create new order
-router.post('/', authenticate, async (req, res) => {
-  const { quote_id, total_amount, status } = req.body;
-  const userId = req.user.id;
+// POST /api/orders
+router.post('/', async (req, res) => {
+  const { customer_id, sales_rep_id, status, total } = req.body;
   try {
     const result = await db.query(
-      'INSERT INTO orders (user_id, quote_id, total_amount, status) VALUES ($1, $2, $3, $4) RETURNING *',
-      [userId, quote_id, total_amount, status || 'pending']
+      `INSERT INTO orders (customer_id, sales_rep_id, status, total, created_at)
+       VALUES ($1, $2, $3, $4, NOW()) RETURNING *`,
+      [customer_id, sales_rep_id, status, total]
     );
-    res.status(201).json(result.rows[0]);
-  } catch (err) {
-    console.error("Error creating order:", err);
-    res.status(500).json({ message: "Failed to create order" });
-  }
-});
-
-// GET /api/orders/:id
-router.get('/:id', authenticate, filterByOwnership(), async (req, res) => {
-  const { id } = req.params;
-  const { clause, values } = getOwnershipClause(req, 'AND');
-  try {
-    const result = await db.query(`SELECT * FROM orders WHERE id = $1 ${clause}`, [id, ...values]);
-    if (result.rows.length === 0) return res.status(404).json({ message: "Order not found" });
     res.json(result.rows[0]);
   } catch (err) {
-    console.error("Error retrieving order:", err);
-    res.status(500).json({ message: "Error retrieving order" });
+    console.error('Error creating order:', err);
+    res.status(500).json({ error: 'Failed to create order' });
   }
 });
 
 // PUT /api/orders/:id
-router.put('/:id', authenticate, filterByOwnership(), async (req, res) => {
-  const { id } = req.params;
-  const { status } = req.body;
-  const { clause, values } = getOwnershipClause(req, 'AND');
-
+router.put('/:id', async (req, res) => {
+  const { customer_id, sales_rep_id, status, total } = req.body;
   try {
     const result = await db.query(
-      `UPDATE orders SET status = $1 WHERE id = $2 ${clause} RETURNING *`,
-      [status, id, ...values]
+      `UPDATE orders SET customer_id=$1, sales_rep_id=$2, status=$3, total=$4
+       WHERE id=$5 RETURNING *`,
+      [customer_id, sales_rep_id, status, total, req.params.id]
     );
-    if (result.rows.length === 0) return res.status(404).json({ message: "Order not found or unauthorized" });
     res.json(result.rows[0]);
   } catch (err) {
-    console.error("Error updating order:", err);
-    res.status(500).json({ message: "Error updating order" });
+    console.error('Error updating order:', err);
+    res.status(500).json({ error: 'Failed to update order' });
   }
 });
 
 // DELETE /api/orders/:id
-router.delete('/:id', authenticate, filterByOwnership(), async (req, res) => {
-  const { id } = req.params;
-  const { clause, values } = getOwnershipClause(req, 'AND');
+router.delete('/:id', async (req, res) => {
   try {
-    const result = await db.query(`DELETE FROM orders WHERE id = $1 ${clause}`, [id, ...values]);
-    if (result.rowCount === 0) return res.status(404).json({ message: "Order not found or unauthorized" });
-    res.json({ message: "Order deleted" });
+    await db.query(`DELETE FROM orders WHERE id=$1`, [req.params.id]);
+    res.sendStatus(204);
   } catch (err) {
-    console.error("Error deleting order:", err);
-    res.status(500).json({ message: "Error deleting order" });
+    console.error('Error deleting order:', err);
+    res.status(500).json({ error: 'Failed to delete order' });
   }
 });
 
