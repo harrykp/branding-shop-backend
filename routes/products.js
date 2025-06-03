@@ -6,13 +6,14 @@ const { authenticate } = require('../middleware/auth');
 // GET /api/products (open to all)
 router.get('/', authenticate, async (req, res) => {
   try {
-    const result = await db.query('SELECT * FROM products WHERE sellable = true ORDER BY name');
-    res.json(result.rows);
+    const result = await db.query('SELECT * FROM products ORDER BY name');
+    res.json({ data: result.rows }); // ensure consistent structure
   } catch (err) {
     console.error("Products fetch error:", err);
     res.status(500).json({ message: "Failed to fetch products" });
   }
 });
+
 
 // POST, PUT, DELETE restricted to admin
 router.post('/', authenticate, async (req, res) => {
