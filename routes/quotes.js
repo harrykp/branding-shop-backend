@@ -60,12 +60,16 @@ router.post('/', async (req, res) => {
     );
     const quoteId = quoteRes.rows[0].id;
 
-    for (const item of items) {
-      await client.query(
-        `INSERT INTO quote_items (quote_id, product_id, quantity, unit_price, subtotal)
-         VALUES ($1, $2, $3, $4, $3 * $4)`,
-        [quoteId, item.product_id, item.quantity, item.unit_price]
-      );
+    if (Array.isArray(items)) {
+      for (const item of items) {
+        if (item.product_id) {
+          await client.query(
+            `INSERT INTO quote_items (quote_id, product_id, quantity, unit_price, subtotal)
+             VALUES ($1, $2, $3, $4, $3 * $4)`,
+            [quoteId, item.product_id, item.quantity, item.unit_price]
+          );
+        }
+      }
     }
 
     await client.query('COMMIT');
@@ -94,12 +98,16 @@ router.put('/:id', async (req, res) => {
 
     await client.query(`DELETE FROM quote_items WHERE quote_id=$1`, [quoteId]);
 
-    for (const item of items) {
-      await client.query(
-        `INSERT INTO quote_items (quote_id, product_id, quantity, unit_price, subtotal)
-         VALUES ($1, $2, $3, $4, $3 * $4)`,
-        [quoteId, item.product_id, item.quantity, item.unit_price]
-      );
+    if (Array.isArray(items)) {
+      for (const item of items) {
+        if (item.product_id) {
+          await client.query(
+            `INSERT INTO quote_items (quote_id, product_id, quantity, unit_price, subtotal)
+             VALUES ($1, $2, $3, $4, $3 * $4)`,
+            [quoteId, item.product_id, item.quantity, item.unit_price]
+          );
+        }
+      }
     }
 
     await client.query('COMMIT');
