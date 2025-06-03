@@ -48,7 +48,7 @@ router.get('/', async (req, res) => {
 
 // POST create quote with items
 router.post('/', async (req, res) => {
-  const { customer_id, sales_rep_id, status, total, items } = req.body;
+  const { customer_id, sales_rep_id, status, total, items = [] } = req.body;
   const client = await db.connect();
 
   try {
@@ -60,14 +60,12 @@ router.post('/', async (req, res) => {
     );
     const quoteId = quoteRes.rows[0].id;
 
-    if (Array.isArray(items)) {
-      for (const item of items) {
-        await client.query(
-          `INSERT INTO quote_items (quote_id, product_id, quantity, unit_price, subtotal)
-           VALUES ($1, $2, $3, $4, $3 * $4)`,
-          [quoteId, item.product_id, item.quantity, item.unit_price]
-        );
-      }
+    for (const item of items) {
+      await client.query(
+        `INSERT INTO quote_items (quote_id, product_id, quantity, unit_price, subtotal)
+         VALUES ($1, $2, $3, $4, $3 * $4)`,
+        [quoteId, item.product_id, item.quantity, item.unit_price]
+      );
     }
 
     await client.query('COMMIT');
@@ -84,7 +82,7 @@ router.post('/', async (req, res) => {
 // PUT update quote and items
 router.put('/:id', async (req, res) => {
   const quoteId = req.params.id;
-  const { customer_id, sales_rep_id, status, total, items } = req.body;
+  const { customer_id, sales_rep_id, status, total, items = [] } = req.body;
   const client = await db.connect();
 
   try {
@@ -96,14 +94,12 @@ router.put('/:id', async (req, res) => {
 
     await client.query(`DELETE FROM quote_items WHERE quote_id=$1`, [quoteId]);
 
-    if (Array.isArray(items)) {
-      for (const item of items) {
-        await client.query(
-          `INSERT INTO quote_items (quote_id, product_id, quantity, unit_price, subtotal)
-           VALUES ($1, $2, $3, $4, $3 * $4)`,
-          [quoteId, item.product_id, item.quantity, item.unit_price]
-        );
-      }
+    for (const item of items) {
+      await client.query(
+        `INSERT INTO quote_items (quote_id, product_id, quantity, unit_price, subtotal)
+         VALUES ($1, $2, $3, $4, $3 * $4)`,
+        [quoteId, item.product_id, item.quantity, item.unit_price]
+      );
     }
 
     await client.query('COMMIT');
