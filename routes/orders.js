@@ -3,9 +3,10 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
+const { authenticate } = require('../middleware/auth');
 
 // GET /api/orders with pagination & filtering
-router.get('/', async (req, res) => {
+router.get('/', authenticate, async (req, res) => {
   const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.limit) || 10;
   const offset = (page - 1) * limit;
@@ -23,6 +24,7 @@ router.get('/', async (req, res) => {
       ORDER BY o.created_at DESC
       LIMIT $2 OFFSET $3
     `;
+
     const countQuery = `
       SELECT COUNT(*) FROM orders o
       JOIN customers c ON o.customer_id = c.id
@@ -42,7 +44,7 @@ router.get('/', async (req, res) => {
 });
 
 // GET single order with items
-router.get('/:id', async (req, res) => {
+router.get('/:id', authenticate, async (req, res) => {
   const id = req.params.id;
   try {
     const orderRes = await db.query(
@@ -72,7 +74,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // POST new order
-router.post('/', async (req, res) => {
+router.post('/', authenticate, async (req, res) => {
   const { customer_id, sales_rep_id, status, items } = req.body;
   const created_at = new Date();
   const total = items.reduce((sum, item) => sum + item.qty * item.unit_price, 0);
@@ -101,7 +103,7 @@ router.post('/', async (req, res) => {
 });
 
 // PUT update order
-router.put('/:id', async (req, res) => {
+router.put('/:id', authenticate, async (req, res) => {
   const { customer_id, sales_rep_id, status, items } = req.body;
   const id = req.params.id;
   const total = items.reduce((sum, item) => sum + item.qty * item.unit_price, 0);
@@ -130,7 +132,7 @@ router.put('/:id', async (req, res) => {
 });
 
 // DELETE order
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', authenticate, async (req, res) => {
   try {
     const id = req.params.id;
     await db.query('DELETE FROM order_items WHERE order_id = $1', [id]);
