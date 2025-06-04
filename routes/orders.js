@@ -77,7 +77,7 @@ router.get('/:id', authenticate, async (req, res) => {
 router.post('/', authenticate, async (req, res) => {
   const { customer_id, sales_rep_id, status, items } = req.body;
   const created_at = new Date();
-  const total = items.reduce((sum, item) => sum + item.qty * item.unit_price, 0);
+  const total = items.reduce((sum, item) => sum + item.quantity * item.unit_price, 0);
 
   try {
     const result = await db.query(
@@ -89,9 +89,9 @@ router.post('/', authenticate, async (req, res) => {
 
     for (const item of items) {
       await db.query(
-        `INSERT INTO order_items (order_id, product_id, qty, unit_price)
+        `INSERT INTO order_items (order_id, product_id, quantity, unit_price)
          VALUES ($1, $2, $3, $4)`,
-        [orderId, item.product_id, item.qty, item.unit_price]
+        [orderId, item.product_id, item.quantity, item.unit_price]
       );
     }
 
@@ -106,7 +106,7 @@ router.post('/', authenticate, async (req, res) => {
 router.put('/:id', authenticate, async (req, res) => {
   const { customer_id, sales_rep_id, status, items } = req.body;
   const id = req.params.id;
-  const total = items.reduce((sum, item) => sum + item.qty * item.unit_price, 0);
+  const total = items.reduce((sum, item) => sum + item.quantity * item.unit_price, 0);
 
   try {
     await db.query(
@@ -118,9 +118,9 @@ router.put('/:id', authenticate, async (req, res) => {
 
     for (const item of items) {
       await db.query(
-        `INSERT INTO order_items (order_id, product_id, qty, unit_price)
+        `INSERT INTO order_items (order_id, product_id, quantity, unit_price)
          VALUES ($1, $2, $3, $4)`,
-        [id, item.product_id, item.qty, item.unit_price]
+        [id, item.product_id, item.quantity, item.unit_price]
       );
     }
 
