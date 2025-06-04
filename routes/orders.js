@@ -41,26 +41,20 @@ router.get('/', async (req, res) => {
   }
 });
 
-// Get a single order with items
-router.get('/:id', authenticate, async (req, res) => {
-  const { id } = req.params;
+// GET single order with items
+router.get('/:id', async (req, res) => {
+  const id = req.params.id;
   try {
-    const orderResult = await db.query(
+    const orderRes = await db.query(
       `SELECT o.*, c.name AS customer_name, u.name AS sales_rep_name
        FROM orders o
-       LEFT JOIN customers c ON o.customer_id = c.id
-       LEFT JOIN users u ON o.sales_rep_id = u.id
+       JOIN customers c ON o.customer_id = c.id
+       JOIN users u ON o.sales_rep_id = u.id
        WHERE o.id = $1`,
       [id]
     );
 
-    if (orderResult.rows.length === 0) {
-      return res.status(404).json({ message: 'Order not found' });
-    }
-
-    const order = orderResult.rows[0];
-
-    const itemsResult = await db.query(
+    const itemsRes = await db.query(
       `SELECT oi.*, p.name AS product_name
        FROM order_items oi
        JOIN products p ON oi.product_id = p.id
@@ -68,13 +62,15 @@ router.get('/:id', authenticate, async (req, res) => {
       [id]
     );
 
-    order.items = itemsResult.rows;
+    const order = orderRes.rows[0];
+    order.items = itemsRes.rows;
     res.json(order);
   } catch (err) {
-    console.error("Error fetching order with items:", err);
-    res.status(500).json({ message: 'Failed to retrieve order' });
+    console.error('Error fetching order details:', err);
+    res.status(500).json({ message: 'Failed to fetch order' });
   }
 });
+
 // POST new order
 router.post('/', async (req, res) => {
   const { customer_id, sales_rep_id, status, items } = req.body;
