@@ -1,42 +1,43 @@
-
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const { authenticate } = require('../middleware/auth');
 
-// GET all leads with pagination and search
+// GET all leads with joins, pagination, and optional search
 router.get('/', authenticate, async (req, res) => {
+  const { search = '', page = 1, limit = 10 } = req.query;
+  const offset = (page - 1) * limit;
+
   try {
-    const { search = '', page = 1, limit = 10 } = req.query;
-    const offset = (page - 1) * limit;
-
-    const searchTerm = `%${search.toLowerCase()}%`;
-
-    const totalResult = await db.query(
+    const searchFilter = `%${search.toLowerCase()}%`;
+    const countRes = await db.query(
       `SELECT COUNT(*) FROM leads l
+       LEFT JOIN customers c ON l.customer_id = c.id
+       LEFT JOIN users u ON l.sales_rep_id = u.id
        LEFT JOIN industries i ON l.industry_id = i.id
        LEFT JOIN referral_sources r ON l.referral_source_id = r.id
-       WHERE LOWER(l.name) LIKE $1 OR LOWER(l.email) LIKE $1 OR LOWER(i.name) LIKE $1 OR LOWER(r.name) LIKE $1`,
-      [searchTerm]
+       WHERE LOWER(l.name) LIKE $1 OR LOWER(l.email) LIKE $1 OR LOWER(l.phone) LIKE $1`,
+      [searchFilter]
     );
-
-    const total = parseInt(totalResult.rows[0].count, 10);
 
     const result = await db.query(
       `SELECT l.*, 
+              c.name AS customer_name, 
+              u.name AS sales_rep_name,
               i.name AS industry_name,
               r.name AS referral_source_name
        FROM leads l
+       LEFT JOIN customers c ON l.customer_id = c.id
+       LEFT JOIN users u ON l.sales_rep_id = u.id
        LEFT JOIN industries i ON l.industry_id = i.id
        LEFT JOIN referral_sources r ON l.referral_source_id = r.id
-       WHERE LOWER(l.name) LIKE $1 OR LOWER(l.email) LIKE $1 OR LOWER(i.name) LIKE $1 OR LOWER(r.name) LIKE $1
+       WHERE LOWER(l.name) LIKE $1 OR LOWER(l.email) LIKE $1 OR LOWER(l.phone) LIKE $1
        ORDER BY l.created_at DESC
        LIMIT $2 OFFSET $3`,
-      [searchTerm, limit, offset]
+      [searchFilter, limit, offset]
     );
 
     const leads = result.rows;
-
     for (const lead of leads) {
       const interestRes = await db.query(
         'SELECT category_id FROM lead_interests WHERE lead_id = $1',
@@ -45,7 +46,7 @@ router.get('/', authenticate, async (req, res) => {
       lead.lead_interests = interestRes.rows.map(row => row.category_id);
     }
 
-    res.json({ results: leads, total });
+    res.json({ results: leads, total: parseInt(countRes.rows[0].count) });
   } catch (err) {
     console.error('Error fetching leads:', err);
     res.status(500).json({ message: 'Failed to fetch leads' });
@@ -58,9 +59,13 @@ router.get('/:id', authenticate, async (req, res) => {
   try {
     const result = await db.query(
       `SELECT l.*, 
+              c.name AS customer_name, 
+              u.name AS sales_rep_name,
               i.name AS industry_name,
               r.name AS referral_source_name
        FROM leads l
+       LEFT JOIN customers c ON l.customer_id = c.id
+       LEFT JOIN users u ON l.sales_rep_id = u.id
        LEFT JOIN industries i ON l.industry_id = i.id
        LEFT JOIN referral_sources r ON l.referral_source_id = r.id
        WHERE l.id = $1`,
@@ -90,15 +95,15 @@ router.post('/', authenticate, async (req, res) => {
     phone,
     website_url,
     status,
-    notes,
-    priority,
     customer_id,
     sales_rep_id,
     industry_id,
     referral_source_id,
+    lead_interests = [],
+    notes,
+    priority,
     next_follow_up_at,
-    last_contacted_at,
-    lead_interests = []
+    last_contacted_at
   } = req.body;
   const user_id = req.user.id;
 
@@ -107,14 +112,10 @@ router.post('/', authenticate, async (req, res) => {
 
     const result = await db.query(
       `INSERT INTO leads 
-        (name, email, phone, website_url, status, notes, priority, customer_id, sales_rep_id, industry_id, referral_source_id, next_follow_up_at, last_contacted_at, user_id)
+        (name, email, phone, website_url, status, customer_id, sales_rep_id, industry_id, referral_source_id, user_id, notes, priority, next_follow_up_at, last_contacted_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
        RETURNING id`,
-      [
-        name, email, phone, website_url, status, notes, priority,
-        customer_id, sales_rep_id, industry_id, referral_source_id,
-        next_follow_up_at || null, last_contacted_at || null, user_id
-      ]
+      [name, email, phone, website_url, status, customer_id, sales_rep_id, industry_id, referral_source_id, user_id, notes, priority, next_follow_up_at, last_contacted_at]
     );
 
     const leadId = result.rows[0].id;
@@ -144,15 +145,15 @@ router.put('/:id', authenticate, async (req, res) => {
     phone,
     website_url,
     status,
-    notes,
-    priority,
     customer_id,
     sales_rep_id,
     industry_id,
     referral_source_id,
+    lead_interests = [],
+    notes,
+    priority,
     next_follow_up_at,
-    last_contacted_at,
-    lead_interests = []
+    last_contacted_at
   } = req.body;
 
   try {
@@ -165,20 +166,16 @@ router.put('/:id', authenticate, async (req, res) => {
         phone = $3,
         website_url = $4,
         status = $5,
-        notes = $6,
-        priority = $7,
-        customer_id = $8,
-        sales_rep_id = $9,
-        industry_id = $10,
-        referral_source_id = $11,
+        customer_id = $6,
+        sales_rep_id = $7,
+        industry_id = $8,
+        referral_source_id = $9,
+        notes = $10,
+        priority = $11,
         next_follow_up_at = $12,
         last_contacted_at = $13
        WHERE id = $14`,
-      [
-        name, email, phone, website_url, status, notes, priority,
-        customer_id, sales_rep_id, industry_id, referral_source_id,
-        next_follow_up_at || null, last_contacted_at || null, id
-      ]
+      [name, email, phone, website_url, status, customer_id, sales_rep_id, industry_id, referral_source_id, notes, priority, next_follow_up_at, last_contacted_at, id]
     );
 
     await db.query('DELETE FROM lead_interests WHERE lead_id = $1', [id]);
@@ -203,10 +200,13 @@ router.put('/:id', authenticate, async (req, res) => {
 router.delete('/:id', authenticate, async (req, res) => {
   const id = req.params.id;
   try {
+    await db.query('BEGIN');
     await db.query('DELETE FROM lead_interests WHERE lead_id = $1', [id]);
     await db.query('DELETE FROM leads WHERE id = $1', [id]);
+    await db.query('COMMIT');
     res.json({ message: 'Lead deleted' });
   } catch (err) {
+    await db.query('ROLLBACK');
     console.error('Error deleting lead:', err);
     res.status(500).json({ message: 'Failed to delete lead' });
   }
