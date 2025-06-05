@@ -5,7 +5,7 @@ const router = express.Router();
 const db = require('../db');
 const { authenticate } = require('../middleware/auth');
 
-// GET /api/leads - with pagination & search
+// GET /api/leads?page=1&limit=10&search=term
 router.get('/', authenticate, async (req, res) => {
   const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.limit) || 10;
@@ -15,16 +15,14 @@ router.get('/', authenticate, async (req, res) => {
   try {
     const leadsQuery = `
       SELECT * FROM leads
-      WHERE name ILIKE $1 OR email ILIKE $1 OR company ILIKE $1
+      WHERE name ILIKE $1 OR company ILIKE $1 OR position ILIKE $1
       ORDER BY created_at DESC
       LIMIT $2 OFFSET $3
     `;
-
     const countQuery = `
       SELECT COUNT(*) FROM leads
-      WHERE name ILIKE $1 OR email ILIKE $1 OR company ILIKE $1
+      WHERE name ILIKE $1 OR company ILIKE $1 OR position ILIKE $1
     `;
-
     const { rows } = await db.query(leadsQuery, [`%${search}%`, limit, offset]);
     const countResult = await db.query(countQuery, [`%${search}%`]);
     const total = parseInt(countResult.rows[0].count);
@@ -36,11 +34,10 @@ router.get('/', authenticate, async (req, res) => {
   }
 });
 
-// GET /api/leads/:id
+// GET single lead
 router.get('/:id', authenticate, async (req, res) => {
   try {
-    const { id } = req.params;
-    const result = await db.query('SELECT * FROM leads WHERE id = $1', [id]);
+    const result = await db.query('SELECT * FROM leads WHERE id = $1', [req.params.id]);
     if (result.rows.length === 0) return res.status(404).json({ message: 'Lead not found' });
     res.json(result.rows[0]);
   } catch (err) {
@@ -49,26 +46,26 @@ router.get('/:id', authenticate, async (req, res) => {
   }
 });
 
-// POST /api/leads
+// POST create new lead
 router.post('/', authenticate, async (req, res) => {
   const {
-    name, email, phone, company, position,
-    industry, referral_source, notes, priority,
-    last_contacted_at, next_follow_up_at, converted
+    name, company, position, industry, referral_source,
+    priority, last_contacted_at, next_follow_up_at,
+    notes, converted
   } = req.body;
 
   try {
-    await db.query(`
-      INSERT INTO leads (
-        name, email, phone, company, position, industry,
-        referral_source, notes, priority, last_contacted_at,
-        next_follow_up_at, converted
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-    `, [
-      name, email, phone, company, position, industry,
-      referral_source, notes, priority, last_contacted_at,
-      next_follow_up_at, converted
-    ]);
+    await db.query(
+      `INSERT INTO leads 
+        (name, company, position, industry, referral_source, priority, 
+         last_contacted_at, next_follow_up_at, notes, converted, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW())`,
+      [
+        name, company, position, industry, referral_source,
+        priority, last_contacted_at, next_follow_up_at,
+        notes, converted
+      ]
+    );
     res.status(201).json({ message: 'Lead created' });
   } catch (err) {
     console.error('Error creating lead:', err);
@@ -76,36 +73,27 @@ router.post('/', authenticate, async (req, res) => {
   }
 });
 
-// PUT /api/leads/:id
+// PUT update lead
 router.put('/:id', authenticate, async (req, res) => {
-  const { id } = req.params;
   const {
-    name, email, phone, company, position,
-    industry, referral_source, notes, priority,
-    last_contacted_at, next_follow_up_at, converted
+    name, company, position, industry, referral_source,
+    priority, last_contacted_at, next_follow_up_at,
+    notes, converted
   } = req.body;
 
   try {
-    await db.query(`
-      UPDATE leads SET
-        name = $1,
-        email = $2,
-        phone = $3,
-        company = $4,
-        position = $5,
-        industry = $6,
-        referral_source = $7,
-        notes = $8,
-        priority = $9,
-        last_contacted_at = $10,
-        next_follow_up_at = $11,
-        converted = $12
-      WHERE id = $13
-    `, [
-      name, email, phone, company, position,
-      industry, referral_source, notes, priority,
-      last_contacted_at, next_follow_up_at, converted, id
-    ]);
+    await db.query(
+      `UPDATE leads SET 
+         name=$1, company=$2, position=$3, industry=$4, referral_source=$5,
+         priority=$6, last_contacted_at=$7, next_follow_up_at=$8,
+         notes=$9, converted=$10, updated_at=NOW()
+       WHERE id=$11`,
+      [
+        name, company, position, industry, referral_source,
+        priority, last_contacted_at, next_follow_up_at,
+        notes, converted, req.params.id
+      ]
+    );
     res.json({ message: 'Lead updated' });
   } catch (err) {
     console.error('Error updating lead:', err);
@@ -113,11 +101,10 @@ router.put('/:id', authenticate, async (req, res) => {
   }
 });
 
-// DELETE /api/leads/:id
+// DELETE lead
 router.delete('/:id', authenticate, async (req, res) => {
   try {
-    const { id } = req.params;
-    await db.query('DELETE FROM leads WHERE id = $1', [id]);
+    await db.query('DELETE FROM leads WHERE id = $1', [req.params.id]);
     res.json({ message: 'Lead deleted' });
   } catch (err) {
     console.error('Error deleting lead:', err);
