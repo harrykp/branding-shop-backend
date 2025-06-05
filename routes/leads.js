@@ -1,24 +1,39 @@
+
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const { authenticate } = require('../middleware/auth');
 
-// GET all leads with joins
+// GET all leads with pagination and search
 router.get('/', authenticate, async (req, res) => {
   try {
-    const result = await db.query(`
-      SELECT l.*, 
-             c.name AS customer_name, 
-             u.name AS sales_rep_name,
-             i.name AS industry_name,
-             r.name AS referral_source_name
-      FROM leads l
-      LEFT JOIN customers c ON l.customer_id = c.id
-      LEFT JOIN users u ON l.sales_rep_id = u.id
-      LEFT JOIN industries i ON l.industry_id = i.id
-      LEFT JOIN referral_sources r ON l.referral_source_id = r.id
-      ORDER BY l.created_at DESC
-    `);
+    const { search = '', page = 1, limit = 10 } = req.query;
+    const offset = (page - 1) * limit;
+
+    const searchTerm = `%${search.toLowerCase()}%`;
+
+    const totalResult = await db.query(
+      `SELECT COUNT(*) FROM leads l
+       LEFT JOIN industries i ON l.industry_id = i.id
+       LEFT JOIN referral_sources r ON l.referral_source_id = r.id
+       WHERE LOWER(l.name) LIKE $1 OR LOWER(l.email) LIKE $1 OR LOWER(i.name) LIKE $1 OR LOWER(r.name) LIKE $1`,
+      [searchTerm]
+    );
+
+    const total = parseInt(totalResult.rows[0].count, 10);
+
+    const result = await db.query(
+      `SELECT l.*, 
+              i.name AS industry_name,
+              r.name AS referral_source_name
+       FROM leads l
+       LEFT JOIN industries i ON l.industry_id = i.id
+       LEFT JOIN referral_sources r ON l.referral_source_id = r.id
+       WHERE LOWER(l.name) LIKE $1 OR LOWER(l.email) LIKE $1 OR LOWER(i.name) LIKE $1 OR LOWER(r.name) LIKE $1
+       ORDER BY l.created_at DESC
+       LIMIT $2 OFFSET $3`,
+      [searchTerm, limit, offset]
+    );
 
     const leads = result.rows;
 
@@ -30,7 +45,7 @@ router.get('/', authenticate, async (req, res) => {
       lead.lead_interests = interestRes.rows.map(row => row.category_id);
     }
 
-    res.json(leads);
+    res.json({ results: leads, total });
   } catch (err) {
     console.error('Error fetching leads:', err);
     res.status(500).json({ message: 'Failed to fetch leads' });
@@ -42,7 +57,13 @@ router.get('/:id', authenticate, async (req, res) => {
   const id = req.params.id;
   try {
     const result = await db.query(
-      `SELECT * FROM leads WHERE id = $1`,
+      `SELECT l.*, 
+              i.name AS industry_name,
+              r.name AS referral_source_name
+       FROM leads l
+       LEFT JOIN industries i ON l.industry_id = i.id
+       LEFT JOIN referral_sources r ON l.referral_source_id = r.id
+       WHERE l.id = $1`,
       [id]
     );
 
