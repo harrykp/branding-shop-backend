@@ -17,10 +17,6 @@ app.use(express.json());
 // Reference data routes (public)
 app.use('/api', require('./routes/referenceData'));
 
-// ✅ Fix: Correct mounting for product_categories
-const productCategoriesRoutes = require('./routes/product-categories');
-app.use('/api/product_categories', productCategoriesRoutes); // Note the underscore
-
 // Serve frontend files
 app.use('/store', express.static(path.join(__dirname, 'store')));
 app.use('/', express.static(path.join(__dirname)));
@@ -31,6 +27,11 @@ const { authenticate } = require('./middleware/auth');
 // Public routes (no authentication)
 app.use('/api/auth', require('./routes/auth'));
 
+// Protected reference routes
+app.use('/api/industries', authenticate, require('./routes/industries'));
+app.use('/api/referral-sources', authenticate, require('./routes/referral_sources'));
+app.use('/api/product-categories', authenticate, require('./routes/product_categories'));
+
 // Protected routes (require JWT auth)
 const protectedRoutes = [
   ['users', 'users'],
@@ -39,7 +40,7 @@ const protectedRoutes = [
   ['orders', 'orders'],
   ['pricing-rules', 'pricing_rules'],
   ['products', 'products'],
-  ['product-categories', 'product_categories'], // kebab-case route
+  ['product-categories', 'product_categories'], // kebab-case
   ['suppliers', 'suppliers'],
   ['catalog', 'catalog'],
   ['purchase-orders', 'purchase_orders'],
@@ -75,7 +76,7 @@ const protectedRoutes = [
   ['payment-types', 'payment_types'],
   ['payrolls', 'payrolls'],
   ['vacation-requests', 'vacation_requests'],
-  ['customers', 'customers'] // ✅ Newly added protected customers route
+  ['customers', 'customers'] // ✅ protected
 ];
 
 // Register all protected routes
