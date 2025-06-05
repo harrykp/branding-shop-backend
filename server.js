@@ -13,6 +13,8 @@ app.use(cors({
 }));
 app.use(express.json());
 
+app.use('/api', require('./routes/referenceData'));
+
 // Serve frontend files
 app.use('/store', express.static(path.join(__dirname, 'store')));
 app.use('/', express.static(path.join(__dirname)));
