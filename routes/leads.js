@@ -1,120 +1,139 @@
 // routes/leads.js
-
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
+const { authenticate } = require('../middleware/auth');
 
-// GET /api/leads?page=1&limit=10&search=
-router.get('/', async (req, res) => {
-  const { page = 1, limit = 10, search = '' } = req.query;
+// GET /api/leads with pagination and filtering
+router.get('/', authenticate, async (req, res) => {
+  const page = parseInt(req.query.page) || 1;
+  const limit = parseInt(req.query.limit) || 10;
   const offset = (page - 1) * limit;
+  const search = req.query.search || '';
 
   try {
     const leadsQuery = `
-      SELECT l.*, 
-             u.name AS created_by_name,
-             i.name AS industry_name,
-             r.name AS referral_source_name,
-             (
-               SELECT json_agg(pc.name) 
-               FROM lead_interests li
-               JOIN product_categories pc ON li.category_id = pc.id
-               WHERE li.lead_id = l.id
-             ) AS interested_categories
+      SELECT l.*, i.name AS industry_name, r.name AS referral_source_name,
+        ARRAY(
+          SELECT pc.name FROM lead_interests li
+          JOIN product_categories pc ON li.category_id = pc.id
+          WHERE li.lead_id = l.id
+        ) AS interests
       FROM leads l
-      LEFT JOIN users u ON l.created_by = u.id
       LEFT JOIN industries i ON l.industry_id = i.id
       LEFT JOIN referral_sources r ON l.referral_source_id = r.id
       WHERE l.name ILIKE $1 OR l.email ILIKE $1
       ORDER BY l.created_at DESC
-      LIMIT $2 OFFSET $3
-    `;
+      LIMIT $2 OFFSET $3`;
 
-    const countQuery = `SELECT COUNT(*) FROM leads WHERE name ILIKE $1 OR email ILIKE $1`;
-    const { rows } = await db.query(leadsQuery, [`%${search}%`, limit, offset]);
+    const countQuery = `
+      SELECT COUNT(*) FROM leads l
+      WHERE l.name ILIKE $1 OR l.email ILIKE $1`;
+
+    const leadsResult = await db.query(leadsQuery, [`%${search}%`, limit, offset]);
     const countResult = await db.query(countQuery, [`%${search}%`]);
+    const total = parseInt(countResult.rows[0].count);
 
-    res.json({ data: rows, total: parseInt(countResult.rows[0].count) });
+    res.json({ data: leadsResult.rows, total });
   } catch (err) {
     console.error('Error fetching leads:', err);
     res.status(500).json({ message: 'Failed to fetch leads' });
   }
 });
 
-// POST /api/leads
-router.post('/', async (req, res) => {
-  const {
-    name, email, phone, website_url, status = 'new',
-    industry_id, referral_source_id, interested_in = []
-  } = req.body;
-  const created_by = req.user.id;
-
-  const client = await db.getClient();
+// GET single lead with full details
+router.get('/:id', authenticate, async (req, res) => {
+  const id = req.params.id;
   try {
-    await client.query('BEGIN');
+    const leadRes = await db.query(`
+      SELECT l.*, i.name AS industry_name, r.name AS referral_source_name
+      FROM leads l
+      LEFT JOIN industries i ON l.industry_id = i.id
+      LEFT JOIN referral_sources r ON l.referral_source_id = r.id
+      WHERE l.id = $1`, [id]);
 
-    const insertLead = `
-      INSERT INTO leads (name, email, phone, website_url, status, created_by, industry_id, referral_source_id)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-      RETURNING id
-    `;
-    const { rows } = await client.query(insertLead, [name, email, phone, website_url, status, created_by, industry_id, referral_source_id]);
-    const leadId = rows[0].id;
+    const interestsRes = await db.query(`
+      SELECT category_id FROM lead_interests WHERE lead_id = $1`, [id]);
 
-    for (const category_id of interested_in) {
-      await client.query(`INSERT INTO lead_interests (lead_id, category_id) VALUES ($1, $2)`, [leadId, category_id]);
+    const lead = leadRes.rows[0];
+    lead.interests = interestsRes.rows.map(row => row.category_id);
+
+    res.json(lead);
+  } catch (err) {
+    console.error('Error fetching lead:', err);
+    res.status(500).json({ message: 'Failed to fetch lead' });
+  }
+});
+
+// POST new lead
+router.post('/', authenticate, async (req, res) => {
+  const {
+    name, email, phone, company, position, website_url, priority, status,
+    last_contacted_at, next_follow_up_at, industry_id, referral_source_id, interests
+  } = req.body;
+
+  try {
+    const leadResult = await db.query(`
+      INSERT INTO leads (name, email, phone, company, position, website_url, priority, status,
+        last_contacted_at, next_follow_up_at, industry_id, referral_source_id)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+      RETURNING id`,
+      [name, email, phone, company, position, website_url, priority, status,
+       last_contacted_at, next_follow_up_at, industry_id, referral_source_id]);
+
+    const leadId = leadResult.rows[0].id;
+
+    if (Array.isArray(interests)) {
+      for (const catId of interests) {
+        await db.query(`INSERT INTO lead_interests (lead_id, category_id) VALUES ($1, $2)`, [leadId, catId]);
+      }
     }
 
-    await client.query('COMMIT');
-    res.status(201).json({ message: 'Lead created', id: leadId });
+    res.status(201).json({ message: 'Lead created' });
   } catch (err) {
-    await client.query('ROLLBACK');
     console.error('Error creating lead:', err);
     res.status(500).json({ message: 'Failed to create lead' });
-  } finally {
-    client.release();
   }
 });
 
-// PUT /api/leads/:id
-router.put('/:id', async (req, res) => {
+// PUT update lead
+router.put('/:id', authenticate, async (req, res) => {
+  const id = req.params.id;
   const {
-    name, email, phone, website_url, status,
-    industry_id, referral_source_id, interested_in = []
+    name, email, phone, company, position, website_url, priority, status,
+    last_contacted_at, next_follow_up_at, industry_id, referral_source_id, interests
   } = req.body;
-  const { id } = req.params;
 
-  const client = await db.getClient();
   try {
-    await client.query('BEGIN');
+    await db.query(`
+      UPDATE leads SET
+        name=$1, email=$2, phone=$3, company=$4, position=$5, website_url=$6,
+        priority=$7, status=$8, last_contacted_at=$9, next_follow_up_at=$10,
+        industry_id=$11, referral_source_id=$12
+      WHERE id = $13`,
+      [name, email, phone, company, position, website_url, priority, status,
+       last_contacted_at, next_follow_up_at, industry_id, referral_source_id, id]);
 
-    const updateQuery = `
-      UPDATE leads
-      SET name=$1, email=$2, phone=$3, website_url=$4, status=$5, industry_id=$6, referral_source_id=$7
-      WHERE id=$8
-    `;
-    await client.query(updateQuery, [name, email, phone, website_url, status, industry_id, referral_source_id, id]);
-
-    await client.query(`DELETE FROM lead_interests WHERE lead_id = $1`, [id]);
-    for (const category_id of interested_in) {
-      await client.query(`INSERT INTO lead_interests (lead_id, category_id) VALUES ($1, $2)`, [id, category_id]);
+    await db.query(`DELETE FROM lead_interests WHERE lead_id = $1`, [id]);
+    if (Array.isArray(interests)) {
+      for (const catId of interests) {
+        await db.query(`INSERT INTO lead_interests (lead_id, category_id) VALUES ($1, $2)`, [id, catId]);
+      }
     }
 
-    await client.query('COMMIT');
     res.json({ message: 'Lead updated' });
   } catch (err) {
-    await client.query('ROLLBACK');
     console.error('Error updating lead:', err);
     res.status(500).json({ message: 'Failed to update lead' });
-  } finally {
-    client.release();
   }
 });
 
-// DELETE /api/leads/:id
-router.delete('/:id', async (req, res) => {
+// DELETE lead
+router.delete('/:id', authenticate, async (req, res) => {
   try {
-    await db.query(`DELETE FROM leads WHERE id = $1`, [req.params.id]);
+    const id = req.params.id;
+    await db.query('DELETE FROM lead_interests WHERE lead_id = $1', [id]);
+    await db.query('DELETE FROM leads WHERE id = $1', [id]);
     res.json({ message: 'Lead deleted' });
   } catch (err) {
     console.error('Error deleting lead:', err);
