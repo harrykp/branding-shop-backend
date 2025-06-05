@@ -1,3 +1,4 @@
+// server.js
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
@@ -13,7 +14,12 @@ app.use(cors({
 }));
 app.use(express.json());
 
+// Reference data routes (public)
 app.use('/api', require('./routes/referenceData'));
+
+// ✅ Fix: Correct mounting for product_categories
+const productCategoriesRoutes = require('./routes/product-categories');
+app.use('/api/product_categories', productCategoriesRoutes); // Note the underscore
 
 // Serve frontend files
 app.use('/store', express.static(path.join(__dirname, 'store')));
@@ -33,7 +39,7 @@ const protectedRoutes = [
   ['orders', 'orders'],
   ['pricing-rules', 'pricing_rules'],
   ['products', 'products'],
-  ['product-categories', 'product_categories'],
+  ['product-categories', 'product_categories'], // kebab-case route
   ['suppliers', 'suppliers'],
   ['catalog', 'catalog'],
   ['purchase-orders', 'purchase_orders'],
