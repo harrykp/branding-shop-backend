@@ -4,33 +4,21 @@ const router = express.Router();
 const db = require('../db');
 const { authenticate } = require('../middleware/auth');
 
-// GET /api/leads?page=1&limit=10&search=
+// GET /api/leads
 router.get('/', authenticate, async (req, res) => {
-  const page = parseInt(req.query.page) || 1;
-  const limit = parseInt(req.query.limit) || 10;
-  const offset = (page - 1) * limit;
-  const search = `%${req.query.search || ''}%`;
-
   try {
-    const query = `
-      SELECT l.*, i.name AS industry, r.name AS referral_source,
-             ARRAY(
-               SELECT c.name
-               FROM lead_interests li
-               JOIN product_categories c ON li.category_id = c.id
-               WHERE li.lead_id = l.id
-             ) AS interested_in
+    const result = await db.query(`
+      SELECT l.*, i.name AS industry_name, r.name AS referral_source_name,
+             ARRAY_AGG(c.name) AS interests
       FROM leads l
       LEFT JOIN industries i ON l.industry_id = i.id
       LEFT JOIN referral_sources r ON l.referral_source_id = r.id
-      WHERE l.name ILIKE $1
+      LEFT JOIN lead_interests li ON l.id = li.lead_id
+      LEFT JOIN product_categories c ON li.category_id = c.id
+      GROUP BY l.id, i.name, r.name
       ORDER BY l.created_at DESC
-      LIMIT $2 OFFSET $3
-    `;
-    const count = await db.query(`SELECT COUNT(*) FROM leads WHERE name ILIKE $1`, [search]);
-    const results = await db.query(query, [search, limit, offset]);
-
-    res.json({ data: results.rows, total: parseInt(count.rows[0].count) });
+    `);
+    res.json({ data: result.rows });
   } catch (err) {
     console.error('Error fetching leads:', err);
     res.status(500).json({ message: 'Failed to fetch leads' });
@@ -39,19 +27,24 @@ router.get('/', authenticate, async (req, res) => {
 
 // GET /api/leads/:id
 router.get('/:id', authenticate, async (req, res) => {
-  const { id } = req.params;
+  const id = req.params.id;
   try {
-    const leadQuery = `
-      SELECT * FROM leads WHERE id = $1
-    `;
-    const leadRes = await db.query(leadQuery, [id]);
-    const lead = leadRes.rows[0];
+    const leadResult = await db.query(
+      `SELECT * FROM leads WHERE id = $1`,
+      [id]
+    );
 
-    const interestRes = await db.query(
+    const interestsResult = await db.query(
       `SELECT category_id FROM lead_interests WHERE lead_id = $1`,
       [id]
     );
-    lead.interested_in = interestRes.rows.map(row => row.category_id);
+
+    if (!leadResult.rows.length) {
+      return res.status(404).json({ message: 'Lead not found' });
+    }
+
+    const lead = leadResult.rows[0];
+    lead.interests = interestsResult.rows.map(row => row.category_id);
 
     res.json(lead);
   } catch (err) {
@@ -63,29 +56,31 @@ router.get('/:id', authenticate, async (req, res) => {
 // POST /api/leads
 router.post('/', authenticate, async (req, res) => {
   const {
-    name, company, position, email, phone, website_url,
-    industry_id, referral_source_id, priority,
-    last_contacted_at, next_follow_up_at, notes, converted,
-    interested_in = []
+    name, email, phone, website_url, company, position, priority,
+    industry_id, referral_source_id, notes,
+    last_contacted_at, next_follow_up_at, converted, interests
   } = req.body;
 
   try {
-    const insertLead = `
-      INSERT INTO leads (name, company, position, email, phone, website_url,
-        industry_id, referral_source_id, priority, last_contacted_at,
-        next_follow_up_at, notes, converted)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-      RETURNING id
-    `;
-    const leadRes = await db.query(insertLead, [
-      name, company, position, email, phone, website_url,
-      industry_id, referral_source_id, priority,
-      last_contacted_at, next_follow_up_at, notes, converted
-    ]);
-    const leadId = leadRes.rows[0].id;
+    const result = await db.query(
+      `INSERT INTO leads (name, email, phone, website_url, company, position, priority,
+                          industry_id, referral_source_id, notes, last_contacted_at,
+                          next_follow_up_at, converted)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+       RETURNING id`,
+      [name, email, phone, website_url, company, position, priority,
+       industry_id, referral_source_id, notes, last_contacted_at,
+       next_follow_up_at, converted]
+    );
+    const leadId = result.rows[0].id;
 
-    for (const categoryId of interested_in) {
-      await db.query(`INSERT INTO lead_interests (lead_id, category_id) VALUES ($1, $2)`, [leadId, categoryId]);
+    if (Array.isArray(interests)) {
+      for (const catId of interests) {
+        await db.query(
+          `INSERT INTO lead_interests (lead_id, category_id) VALUES ($1, $2)`,
+          [leadId, catId]
+        );
+      }
     }
 
     res.status(201).json({ message: 'Lead created' });
@@ -97,31 +92,34 @@ router.post('/', authenticate, async (req, res) => {
 
 // PUT /api/leads/:id
 router.put('/:id', authenticate, async (req, res) => {
-  const { id } = req.params;
+  const id = req.params.id;
   const {
-    name, company, position, email, phone, website_url,
-    industry_id, referral_source_id, priority,
-    last_contacted_at, next_follow_up_at, notes, converted,
-    interested_in = []
+    name, email, phone, website_url, company, position, priority,
+    industry_id, referral_source_id, notes,
+    last_contacted_at, next_follow_up_at, converted, interests
   } = req.body;
 
   try {
-    const updateLead = `
-      UPDATE leads
-      SET name=$1, company=$2, position=$3, email=$4, phone=$5, website_url=$6,
-          industry_id=$7, referral_source_id=$8, priority=$9,
-          last_contacted_at=$10, next_follow_up_at=$11, notes=$12, converted=$13
-      WHERE id = $14
-    `;
-    await db.query(updateLead, [
-      name, company, position, email, phone, website_url,
-      industry_id, referral_source_id, priority,
-      last_contacted_at, next_follow_up_at, notes, converted, id
-    ]);
+    await db.query(
+      `UPDATE leads SET name = $1, email = $2, phone = $3, website_url = $4, 
+        company = $5, position = $6, priority = $7, industry_id = $8,
+        referral_source_id = $9, notes = $10, last_contacted_at = $11,
+        next_follow_up_at = $12, converted = $13
+       WHERE id = $14`,
+      [name, email, phone, website_url, company, position, priority,
+       industry_id, referral_source_id, notes, last_contacted_at,
+       next_follow_up_at, converted, id]
+    );
 
     await db.query(`DELETE FROM lead_interests WHERE lead_id = $1`, [id]);
-    for (const categoryId of interested_in) {
-      await db.query(`INSERT INTO lead_interests (lead_id, category_id) VALUES ($1, $2)`, [id, categoryId]);
+
+    if (Array.isArray(interests)) {
+      for (const catId of interests) {
+        await db.query(
+          `INSERT INTO lead_interests (lead_id, category_id) VALUES ($1, $2)`,
+          [id, catId]
+        );
+      }
     }
 
     res.json({ message: 'Lead updated' });
@@ -133,7 +131,7 @@ router.put('/:id', authenticate, async (req, res) => {
 
 // DELETE /api/leads/:id
 router.delete('/:id', authenticate, async (req, res) => {
-  const { id } = req.params;
+  const id = req.params.id;
   try {
     await db.query(`DELETE FROM lead_interests WHERE lead_id = $1`, [id]);
     await db.query(`DELETE FROM leads WHERE id = $1`, [id]);
