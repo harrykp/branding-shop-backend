@@ -3,9 +3,10 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 
+// GET all leads with pagination & search
 router.get('/', async (req, res) => {
   const { search = '', page = 1, limit = 10 } = req.query;
-  const offset = (page - 1) * limit;
+  const offset = (parseInt(page) - 1) * parseInt(limit);
 
   try {
     const baseQuery = `
@@ -18,10 +19,7 @@ router.get('/', async (req, res) => {
       LIMIT $2 OFFSET $3
     `;
 
-    const countQuery = `
-      SELECT COUNT(*) FROM leads
-      WHERE name ILIKE $1 OR email ILIKE $1
-    `;
+    const countQuery = `SELECT COUNT(*) FROM leads WHERE name ILIKE $1 OR email ILIKE $1`;
 
     const [dataResult, countResult] = await Promise.all([
       db.query(baseQuery, [`%${search}%`, limit, offset]),
@@ -29,14 +27,14 @@ router.get('/', async (req, res) => {
     ]);
 
     const leadIds = dataResult.rows.map(row => row.id);
-    const interestResult = await db.query(
+    const interests = await db.query(
       `SELECT li.lead_id, pc.id, pc.name FROM lead_interests li
        JOIN product_categories pc ON li.category_id = pc.id
        WHERE li.lead_id = ANY($1)`, [leadIds]
     );
 
     const interestMap = {};
-    interestResult.rows.forEach(({ lead_id, id, name }) => {
+    interests.rows.forEach(({ lead_id, id, name }) => {
       if (!interestMap[lead_id]) interestMap[lead_id] = [];
       interestMap[lead_id].push({ id, name });
     });
@@ -53,6 +51,7 @@ router.get('/', async (req, res) => {
   }
 });
 
+// GET single lead with full names
 router.get('/:id', async (req, res) => {
   const id = req.params.id;
   try {
@@ -66,11 +65,13 @@ router.get('/:id', async (req, res) => {
     if (!leadRes.rows.length) return res.status(404).json({ error: 'Lead not found' });
 
     const interests = await db.query(
-      `SELECT category_id FROM lead_interests WHERE lead_id = $1`, [id]);
+      `SELECT pc.id, pc.name FROM lead_interests li
+       JOIN product_categories pc ON li.category_id = pc.id
+       WHERE li.lead_id = $1`, [id]);
 
     res.json({
       ...leadRes.rows[0],
-      lead_interests: interests.rows.map(r => r.category_id)
+      lead_interests: interests.rows
     });
   } catch (err) {
     console.error('Error fetching lead:', err);
@@ -78,6 +79,7 @@ router.get('/:id', async (req, res) => {
   }
 });
 
+// POST create lead
 router.post('/', async (req, res) => {
   const {
     name, email, phone, company, position, website_url,
@@ -98,7 +100,6 @@ router.post('/', async (req, res) => {
     );
 
     const leadId = result.rows[0].id;
-
     for (const catId of lead_interests) {
       await db.query(`INSERT INTO lead_interests (lead_id, category_id) VALUES ($1, $2)`, [leadId, catId]);
     }
@@ -110,6 +111,7 @@ router.post('/', async (req, res) => {
   }
 });
 
+// PUT update lead
 router.put('/:id', async (req, res) => {
   const id = req.params.id;
   const {
@@ -129,7 +131,7 @@ router.put('/:id', async (req, res) => {
        sales_rep_id, customer_id, industry_id, referral_source_id, user_id, id]
     );
 
-    await db.query(`DELETE FROM lead_interests WHERE lead_id = $1`, [id]);
+    await db.query('DELETE FROM lead_interests WHERE lead_id = $1', [id]);
     for (const catId of lead_interests) {
       await db.query(`INSERT INTO lead_interests (lead_id, category_id) VALUES ($1, $2)`, [id, catId]);
     }
@@ -141,6 +143,7 @@ router.put('/:id', async (req, res) => {
   }
 });
 
+// DELETE lead
 router.delete('/:id', async (req, res) => {
   try {
     await db.query('DELETE FROM lead_interests WHERE lead_id = $1', [req.params.id]);
