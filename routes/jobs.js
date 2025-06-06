@@ -1,4 +1,3 @@
-// routes/jobs.js
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
@@ -9,30 +8,39 @@ router.get('/', authenticate, async (req, res) => {
   try {
     const { page = 1, limit = 10, search = '' } = req.query;
     const offset = (page - 1) * limit;
-
     const searchQuery = `%${search.toLowerCase()}%`;
 
     const totalRes = await db.query(`SELECT COUNT(*) FROM jobs`);
     const total = parseInt(totalRes.rows[0].count);
 
-    const jobs = await db.query(
-      `SELECT j.*, d.name AS department_name, u.name AS assigned_to_name, p.name AS product_name
-       FROM jobs j
-       LEFT JOIN departments d ON j.department_id = d.id
-       LEFT JOIN users u ON j.assigned_to = u.id
-       LEFT JOIN products p ON j.product_id = p.id
-       WHERE LOWER(j.job_name) LIKE $1
-       ORDER BY j.created_at DESC
-       LIMIT $2 OFFSET $3`,
+    const jobsRes = await db.query(
+      `
+      SELECT j.*,
+             d.name AS department_name,
+             u.name AS assigned_to_name,
+             p.name AS product_name,
+             cu.name AS customer_name,
+             sr.name AS sales_rep_name
+      FROM jobs j
+      LEFT JOIN departments d ON j.department_id = d.id
+      LEFT JOIN users u ON j.assigned_to = u.id
+      LEFT JOIN products p ON j.product_id = p.id
+      LEFT JOIN customers cu ON j.customer_id = cu.id
+      LEFT JOIN users sr ON j.sales_rep_id = sr.id
+      WHERE LOWER(COALESCE(j.job_name, j.id::text)) LIKE $1
+      ORDER BY j.created_at DESC
+      LIMIT $2 OFFSET $3
+      `,
       [searchQuery, limit, offset]
     );
 
-    res.json({ data: jobs.rows, total });
+    res.json({ data: jobsRes.rows, total });
   } catch (err) {
     console.error('Error fetching jobs:', err);
     res.status(500).json({ message: 'Failed to fetch jobs' });
   }
 });
+
 
 // GET single job by ID
 router.get('/:id', authenticate, async (req, res) => {
