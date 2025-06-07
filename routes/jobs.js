@@ -41,7 +41,6 @@ router.get('/', authenticate, async (req, res) => {
   }
 });
 
-
 // GET single job by ID
 router.get('/:id', authenticate, async (req, res) => {
   try {
@@ -61,6 +60,7 @@ router.post('/', authenticate, async (req, res) => {
   try {
     const {
       job_name, order_id, product_id, deal_id, department_id, assigned_to,
+      customer_id, sales_rep_id, started_at,
       type, status, qty, qty_remaining, price, ordered_value,
       completed_qty, completed_value, taxed, completed_tax_amount, completed_value_with_tax,
       balance_unpaid, balance_unpaid_taxed, percent_complete, delivery_date,
@@ -71,24 +71,27 @@ router.post('/', authenticate, async (req, res) => {
 
     await db.query(
       `INSERT INTO jobs (
-        job_name, order_id, product_id, deal_id, department_id, assigned_to, type, status,
-        qty, qty_remaining, price, ordered_value, completed_qty, completed_value,
-        taxed, completed_tax_amount, completed_value_with_tax,
+        job_name, order_id, product_id, deal_id, department_id, assigned_to,
+        customer_id, sales_rep_id, started_at,
+        type, status, qty, qty_remaining, price, ordered_value,
+        completed_qty, completed_value, taxed, completed_tax_amount, completed_value_with_tax,
         balance_unpaid, balance_unpaid_taxed, percent_complete,
         delivery_date, payment_status, payment_due_date,
         priority, stage, comments, created_by
       ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8,
-        $9, $10, $11, $12, $13, $14,
-        $15, $16, $17,
-        $18, $19, $20,
+        $1, $2, $3, $4, $5, $6,
+        $7, $8, $9,
+        $10, $11, $12, $13, $14, $15,
+        $16, $17, $18, $19, $20,
         $21, $22, $23,
-        $24, $25, $26, $27
+        $24, $25, $26,
+        $27, $28, $29, $30
       )`,
       [
-        job_name, order_id, product_id, deal_id, department_id, assigned_to, type, status,
-        qty, qty_remaining, price, ordered_value, completed_qty, completed_value,
-        taxed, completed_tax_amount, completed_value_with_tax,
+        job_name, order_id, product_id, deal_id, department_id, assigned_to,
+        customer_id, sales_rep_id, started_at,
+        type, status, qty, qty_remaining, price, ordered_value,
+        completed_qty, completed_value, taxed, completed_tax_amount, completed_value_with_tax,
         balance_unpaid, balance_unpaid_taxed, percent_complete,
         delivery_date, payment_status, payment_due_date,
         priority, stage, comments, created_by
@@ -107,6 +110,7 @@ router.put('/:id', authenticate, async (req, res) => {
   try {
     const {
       job_name, order_id, product_id, deal_id, department_id, assigned_to,
+      customer_id, sales_rep_id, started_at,
       type, status, qty, qty_remaining, price, ordered_value,
       completed_qty, completed_value, taxed, completed_tax_amount, completed_value_with_tax,
       balance_unpaid, balance_unpaid_taxed, percent_complete, delivery_date,
@@ -118,20 +122,18 @@ router.put('/:id', authenticate, async (req, res) => {
     await db.query(
       `UPDATE jobs SET
         job_name=$1, order_id=$2, product_id=$3, deal_id=$4,
-        department_id=$5, assigned_to=$6, type=$7, status=$8,
-        qty=$9, qty_remaining=$10, price=$11, ordered_value=$12,
-        completed_qty=$13, completed_value=$14,
-        taxed=$15, completed_tax_amount=$16, completed_value_with_tax=$17,
-        balance_unpaid=$18, balance_unpaid_taxed=$19, percent_complete=$20,
-        delivery_date=$21, payment_status=$22, payment_due_date=$23,
-        priority=$24, stage=$25, comments=$26, updated_by=$27, updated_at=NOW()
-      WHERE id = $28`,
+        department_id=$5, assigned_to=$6, customer_id=$7, sales_rep_id=$8, started_at=$9,
+        type=$10, status=$11, qty=$12, qty_remaining=$13, price=$14, ordered_value=$15,
+        completed_qty=$16, completed_value=$17, taxed=$18, completed_tax_amount=$19, completed_value_with_tax=$20,
+        balance_unpaid=$21, balance_unpaid_taxed=$22, percent_complete=$23,
+        delivery_date=$24, payment_status=$25, payment_due_date=$26,
+        priority=$27, stage=$28, comments=$29, updated_by=$30, updated_at=NOW()
+      WHERE id = $31`,
       [
         job_name, order_id, product_id, deal_id,
-        department_id, assigned_to, type, status,
-        qty, qty_remaining, price, ordered_value,
-        completed_qty, completed_value,
-        taxed, completed_tax_amount, completed_value_with_tax,
+        department_id, assigned_to, customer_id, sales_rep_id, started_at,
+        type, status, qty, qty_remaining, price, ordered_value,
+        completed_qty, completed_value, taxed, completed_tax_amount, completed_value_with_tax,
         balance_unpaid, balance_unpaid_taxed, percent_complete,
         delivery_date, payment_status, payment_due_date,
         priority, stage, comments, updated_by, req.params.id
