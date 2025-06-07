@@ -27,7 +27,7 @@ router.get('/', authenticate, async (req, res) => {
       })
     );
 
-    res.json(usersWithRoles);
+    res.json({ data: usersWithRoles });
   } catch (err) {
     console.error("Error fetching users:", err);
     res.status(500).json({ message: "Server error while fetching users" });
@@ -94,5 +94,17 @@ router.get('/count', authenticate, async (req, res) => {
     res.status(500).json({ message: "Error fetching user count" });
   }
 });
+
+// GET /api/users/options - Lightweight list for dropdowns
+router.get('/options', authenticate, async (req, res) => {
+  try {
+    const result = await db.query('SELECT id, name FROM users ORDER BY name ASC');
+    res.json(result.rows);
+  } catch (err) {
+    console.error("Error fetching user options:", err);
+    res.status(500).json({ message: "Server error while fetching user options" });
+  }
+});
+
 
 module.exports = router;
