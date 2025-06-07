@@ -4,33 +4,40 @@ const db = require("../db");
 const { authenticate } = require("../middleware/auth");
 
 // GET all commissions (paginated & filtered)
-router.get("/", authenticate, async (req, res) => {
+router.get('/', authenticate, async (req, res) => {
+  const { page = 1, limit = 10, search = '' } = req.query;
+  const offset = (page - 1) * limit;
+
   try {
-    const { page = 1, limit = 10, search = "" } = req.query;
-    const offset = (page - 1) * limit;
-    const searchQuery = `%${search.toLowerCase()}%`;
-
-    const totalRes = await db.query("SELECT COUNT(*) FROM commissions");
-    const total = parseInt(totalRes.rows[0].count);
-
-    const dataRes = await db.query(
-      `SELECT c.*, j.job_name, u.name AS sales_rep_name, d.name AS deal_name
+    const dataResult = await db.query(
+      `SELECT c.*, j.job_name, u.name AS sales_rep_name
        FROM commissions c
        LEFT JOIN jobs j ON c.job_id = j.id
        LEFT JOIN users u ON c.sales_rep_id = u.id
-       LEFT JOIN deals d ON c.deal_id = d.id
-       WHERE LOWER(COALESCE(j.job_name, '') || ' ' || COALESCE(u.name, '')) LIKE $1
-       ORDER BY c.created_at DESC
+       WHERE j.job_name ILIKE $1
+       ORDER BY c.id DESC
        LIMIT $2 OFFSET $3`,
-      [searchQuery, limit, offset]
+      [`%${search}%`, limit, offset]
     );
 
-    res.json({ data: dataRes.rows, total });
+    const totalResult = await db.query(
+      `SELECT COUNT(*) FROM commissions c
+       LEFT JOIN jobs j ON c.job_id = j.id
+       WHERE j.job_name ILIKE $1`,
+      [`%${search}%`]
+    );
+
+    res.json({
+      data: dataResult.rows,
+      total: parseInt(totalResult.rows[0].count)
+    });
+
   } catch (err) {
     console.error("Error fetching commissions:", err);
     res.status(500).json({ message: "Failed to fetch commissions" });
   }
 });
+
 
 // GET single commission
 router.get("/:id", authenticate, async (req, res) => {
