@@ -17,9 +17,7 @@ app.use(express.json());
 // Reference data routes (public)
 app.use('/api', require('./routes/referenceData'));
 
-// Serve frontend files
-app.use('/store', express.static(path.join(__dirname, 'store')));
-app.use('/', express.static(path.join(__dirname)));
+
 
 // JWT middleware
 const { authenticate } = require('./middleware/auth');
@@ -83,6 +81,10 @@ const protectedRoutes = [
 for (const [route, file] of protectedRoutes) {
   app.use(`/api/${route}`, authenticate, require(`./routes/${file}`));
 }
+
+// Serve frontend files
+app.use('/store', express.static(path.join(__dirname, 'store')));
+app.use('/', express.static(path.join(__dirname)));
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`✅ API listening on port ${PORT}`));
