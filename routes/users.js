@@ -95,14 +95,14 @@ router.get('/count', authenticate, async (req, res) => {
   }
 });
 
-// GET /api/users/options - Lightweight list for dropdowns
+// Lightweight list of users for dropdowns
 router.get('/options', authenticate, async (req, res) => {
   try {
     const result = await db.query('SELECT id, name FROM users ORDER BY name ASC');
     res.json(result.rows);
   } catch (err) {
     console.error("Error fetching user options:", err);
-    res.status(500).json({ message: "Server error while fetching user options" });
+    res.status(500).json({ message: "Error fetching user options" });
   }
 });
 
