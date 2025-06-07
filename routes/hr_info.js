@@ -46,23 +46,27 @@ router.post('/', authenticate, async (req, res) => {
   try {
     const {
       user_id, department_id, position, employment_type, start_date, end_date,
-      ssnit_number, tin_number, nhis_number, salary, bank_account, notes
+      ssnit_number, tin_number, nhis_number, salary, bank_account, notes,
+      photo_url, next_of_kin_name, next_of_kin_phone, next_of_kin_relationship
     } = req.body;
 
     await db.query(`
       INSERT INTO hr_info (
         user_id, department_id, position, employment_type,
         start_date, end_date, ssnit_number, tin_number, nhis_number,
-        salary, bank_account, notes, created_by
+        salary, bank_account, notes, created_by,
+        photo_url, next_of_kin_name, next_of_kin_phone, next_of_kin_relationship
       ) VALUES (
         $1, $2, $3, $4,
         $5, $6, $7, $8, $9,
-        $10, $11, $12, $13
+        $10, $11, $12, $13,
+        $14, $15, $16, $17
       )
     `, [
       user_id, department_id, position, employment_type,
       start_date, end_date, ssnit_number, tin_number, nhis_number,
-      salary, bank_account, notes, req.user.userId
+      salary, bank_account, notes, req.user.userId,
+      photo_url, next_of_kin_name, next_of_kin_phone, next_of_kin_relationship
     ]);
 
     res.status(201).json({ message: 'HR info created' });
@@ -77,19 +81,23 @@ router.put('/:id', authenticate, async (req, res) => {
   try {
     const {
       user_id, department_id, position, employment_type, start_date, end_date,
-      ssnit_number, tin_number, nhis_number, salary, bank_account, notes
+      ssnit_number, tin_number, nhis_number, salary, bank_account, notes,
+      photo_url, next_of_kin_name, next_of_kin_phone, next_of_kin_relationship
     } = req.body;
 
     await db.query(`
       UPDATE hr_info SET
         user_id=$1, department_id=$2, position=$3, employment_type=$4,
         start_date=$5, end_date=$6, ssnit_number=$7, tin_number=$8, nhis_number=$9,
-        salary=$10, bank_account=$11, notes=$12
-      WHERE id = $13
+        salary=$10, bank_account=$11, notes=$12,
+        photo_url=$13, next_of_kin_name=$14, next_of_kin_phone=$15, next_of_kin_relationship=$16
+      WHERE id = $17
     `, [
       user_id, department_id, position, employment_type,
       start_date, end_date, ssnit_number, tin_number, nhis_number,
-      salary, bank_account, notes, req.params.id
+      salary, bank_account, notes,
+      photo_url, next_of_kin_name, next_of_kin_phone, next_of_kin_relationship,
+      req.params.id
     ]);
 
     res.json({ message: 'HR info updated' });
