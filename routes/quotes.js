@@ -3,12 +3,13 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
+const { isNumeric } = require('../utils/validators'); // if reusable helper exists
 const { authenticate } = require('../middleware/auth');
 
 // GET /api/quotes with pagination & filtering
 router.get('/', authenticate, async (req, res) => {
-  const page = parseInt(req.query.page) || 1;
-  const limit = parseInt(req.query.limit) || 10;
+  const page = isNaN(parseInt(req.query.page)) ? 1 : parseInt(req.query.page);
+  const limit = isNaN(parseInt(req.query.limit)) ? 10 : parseInt(req.query.limit);
   const offset = (page - 1) * limit;
   const search = req.query.search || '';
 
@@ -45,7 +46,8 @@ router.get('/', authenticate, async (req, res) => {
 
 // GET single quote with items
 router.get('/:id', authenticate, async (req, res) => {
-  const id = req.params.id;
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ message: 'Invalid quote ID' });
   try {
     const quoteRes = await db.query(
       `SELECT q.*, c.name AS customer_name, u.name AS sales_rep_name
