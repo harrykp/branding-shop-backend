@@ -6,6 +6,18 @@ const db = require('../db');
 //const { isNumeric } = require('../utils/validators'); 
 const { authenticate } = require('../middleware/auth');
 
+// GET total quote count
+router.get('/count', authenticate, async (req, res) => {
+  try {
+    const result = await db.query('SELECT COUNT(*) FROM quotes');
+    res.json({ count: parseInt(result.rows[0].count) });
+  } catch (err) {
+    console.error('Error counting quotes:', err);
+    res.status(500).json({ message: 'Failed to count quotes' });
+  }
+});
+
+
 // GET /api/quotes with pagination & filtering
 router.get('/', authenticate, async (req, res) => {
   const page = isNaN(parseInt(req.query.page)) ? 1 : parseInt(req.query.page);
@@ -146,17 +158,5 @@ router.delete('/:id', authenticate, async (req, res) => {
     res.status(500).json({ message: 'Failed to delete quote' });
   }
 });
-// GET quote count
-router.get('/count', authenticate, async (req, res) => {
-  try {
-    const result = await db.query('SELECT COUNT(*) FROM quotes');
-    res.json({ count: parseInt(result.rows[0].count) });
-  } catch (err) {
-    console.error('Error fetching quote count:', err);
-    res.status(500).json({ message: 'Failed to fetch quote count' });
-  }
-});
-
-
 
 module.exports = router;
