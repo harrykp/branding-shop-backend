@@ -145,5 +145,16 @@ router.delete('/:id', authenticate, async (req, res) => {
     res.status(500).json({ message: 'Failed to delete order' });
   }
 });
+// GET /api/orders/count
+router.get('/count', authenticate, async (req, res) => {
+  try {
+    const result = await db.query(`SELECT COUNT(*) FROM orders`);
+    const count = parseInt(result.rows[0].count);
+    res.json({ count });
+  } catch (err) {
+    console.error('Error counting orders:', err);
+    res.status(500).json({ message: 'Failed to count orders' });
+  }
+});
 
 module.exports = router;
