@@ -146,5 +146,16 @@ router.delete('/:id', authenticate, async (req, res) => {
     res.status(500).json({ message: 'Failed to delete quote' });
   }
 });
+// GET /api/quotes/count
+router.get('/count', authenticate, async (req, res) => {
+  try {
+    const result = await db.query(`SELECT COUNT(*) FROM quotes`);
+    const count = parseInt(result.rows[0].count);
+    res.json({ count });
+  } catch (err) {
+    console.error('Error counting quotes:', err);
+    res.status(500).json({ message: 'Failed to count quotes' });
+  }
+});
 
 module.exports = router;
