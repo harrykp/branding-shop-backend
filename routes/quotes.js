@@ -3,7 +3,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
-const { isNumeric } = require('../utils/validators'); // if reusable helper exists
+//const { isNumeric } = require('../utils/validators'); // if reusable helper exists
 const { authenticate } = require('../middleware/auth');
 
 // GET /api/quotes with pagination & filtering
