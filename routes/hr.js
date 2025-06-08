@@ -30,10 +30,17 @@ router.get('/', authenticate, async (req, res) => {
   }
 });
 
-// GET single hr_info by ID
+// GET single hr_info by ID (with user and department names)
 router.get('/:id', authenticate, async (req, res) => {
   try {
-    const result = await db.query(`SELECT * FROM hr_info WHERE id = $1`, [req.params.id]);
+    const result = await db.query(`
+      SELECT h.*, u.name AS employee_name, d.name AS department_name
+      FROM hr_info h
+      LEFT JOIN users u ON h.user_id = u.id
+      LEFT JOIN departments d ON h.department_id = d.id
+      WHERE h.id = $1
+    `, [req.params.id]);
+
     res.json(result.rows[0]);
   } catch (err) {
     console.error('Error fetching HR record:', err);
@@ -85,21 +92,21 @@ router.put('/:id', authenticate, async (req, res) => {
       photo_url, next_of_kin_name, next_of_kin_phone, next_of_kin_relationship
     } = req.body;
 
-  await db.query(`
-    UPDATE hr_info SET
-      user_id=$1, department_id=$2, position=$3, employment_type=$4,
-      start_date=$5, end_date=$6, ssnit_number=$7, tin_number=$8, nhis_number=$9,
-      salary=$10, bank_account=$11, notes=$12,
-      photo_url=$13, next_of_kin_name=$14, next_of_kin_phone=$15, next_of_kin_relationship=$16,
-      updated_by=$17, updated_at=NOW()
-    WHERE id = $18
-  `, [
-    user_id, department_id, position, employment_type,
-    start_date, end_date, ssnit_number, tin_number, nhis_number,
-    salary, bank_account, notes,
-    photo_url, next_of_kin_name, next_of_kin_phone, next_of_kin_relationship,
-    req.user.userId, req.params.id
-  ]);
+    await db.query(`
+      UPDATE hr_info SET
+        user_id=$1, department_id=$2, position=$3, employment_type=$4,
+        start_date=$5, end_date=$6, ssnit_number=$7, tin_number=$8, nhis_number=$9,
+        salary=$10, bank_account=$11, notes=$12,
+        photo_url=$13, next_of_kin_name=$14, next_of_kin_phone=$15, next_of_kin_relationship=$16,
+        updated_by=$17, updated_at=NOW()
+      WHERE id = $18
+    `, [
+      user_id, department_id, position, employment_type,
+      start_date, end_date, ssnit_number, tin_number, nhis_number,
+      salary, bank_account, notes,
+      photo_url, next_of_kin_name, next_of_kin_phone, next_of_kin_relationship,
+      req.user.userId, req.params.id
+    ]);
 
     res.json({ message: 'HR info updated' });
   } catch (err) {
