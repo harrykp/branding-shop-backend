@@ -17,8 +17,6 @@ app.use(express.json());
 // Reference data routes (public)
 app.use('/api', require('./routes/referenceData'));
 
-
-
 // JWT middleware
 const { authenticate } = require('./middleware/auth');
 
@@ -30,6 +28,9 @@ app.use('/api/industries', authenticate, require('./routes/industries'));
 app.use('/api/referral-sources', authenticate, require('./routes/referral_sources'));
 app.use('/api/product-categories', authenticate, require('./routes/product_categories'));
 
+// ✅ Additional protected route for leave types
+app.use('/api/leave-types', authenticate, require('./routes/leave_types'));
+
 // Protected routes (require JWT auth)
 const protectedRoutes = [
   ['users', 'users'],
@@ -38,7 +39,7 @@ const protectedRoutes = [
   ['orders', 'orders'],
   ['pricing-rules', 'pricing_rules'],
   ['products', 'products'],
-  ['product-categories', 'product_categories'], // kebab-case
+  ['product-categories', 'product_categories'],
   ['suppliers', 'suppliers'],
   ['catalog', 'catalog'],
   ['purchase-orders', 'purchase_orders'],
@@ -74,7 +75,7 @@ const protectedRoutes = [
   ['payment-types', 'payment_types'],
   ['payrolls', 'payrolls'],
   ['vacation-requests', 'vacation_requests'],
-  ['customers', 'customers'] // ✅ protected
+  ['customers', 'customers']
 ];
 
 // Register all protected routes
