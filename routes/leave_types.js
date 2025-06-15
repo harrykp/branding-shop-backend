@@ -28,10 +28,10 @@ router.get('/:id', authenticate, async (req, res) => {
 // CREATE leave type
 router.post('/', authenticate, async (req, res) => {
   try {
-    const { name, description, max_days } = req.body;
+    const { name, description } = req.body;
     await db.query(
-      'INSERT INTO leave_types (name, description, max_days, created_at) VALUES ($1, $2, $3, NOW())',
-      [name, description, max_days]
+      'INSERT INTO leave_types (name, description, created_at) VALUES ($1, $2, NOW())',
+      [name, description]
     );
     res.status(201).json({ message: 'Leave type created' });
   } catch (err) {
@@ -43,10 +43,10 @@ router.post('/', authenticate, async (req, res) => {
 // UPDATE leave type
 router.put('/:id', authenticate, async (req, res) => {
   try {
-    const { name, description, max_days } = req.body;
+    const { name, description } = req.body;
     await db.query(
-      'UPDATE leave_types SET name=$1, description=$2, max_days=$3 WHERE id=$4',
-      [name, description, max_days, req.params.id]
+      'UPDATE leave_types SET name=$1, description=$2  WHERE id=$3',
+      [name, description, req.params.id]
     );
     res.json({ message: 'Leave type updated' });
   } catch (err) {
