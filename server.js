@@ -1,4 +1,4 @@
-// server.js (FULL & UPDATED)
+// server.js
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
@@ -6,7 +6,7 @@ require('dotenv').config();
 
 const app = express();
 
-// Enable CORS and JSON parsing
+// CORS configuration
 app.use(cors({
   origin: '*',
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -14,10 +14,10 @@ app.use(cors({
 }));
 app.use(express.json());
 
-// Public reference route
+// Public reference data
 app.use('/api', require('./routes/referenceData'));
 
-// JWT Middleware
+// Auth middleware
 const { authenticate } = require('./middleware/auth');
 
 // Public routes
@@ -27,11 +27,8 @@ app.use('/api/auth', require('./routes/auth'));
 app.use('/api/industries', authenticate, require('./routes/industries'));
 app.use('/api/referral-sources', authenticate, require('./routes/referral_sources'));
 app.use('/api/product-categories', authenticate, require('./routes/product_categories'));
-app.use('/api/leave-balances', authenticate, require('./routes/leave_balances'));
-app.use('/api/leave-requests', authenticate, require('./routes/leave_requests'));
 
-
-// Core protected routes
+// Protected API routes
 const protectedRoutes = [
   ['users', 'users'],
   ['roles', 'roles'],
@@ -75,8 +72,8 @@ const protectedRoutes = [
   ['payment-types', 'payment_types'],
   ['payrolls', 'payrolls'],
   ['vacation-requests', 'vacation_requests'],
-  ['leave_requests', 'leave_requests'],
-  ['leave_balances', 'leave_balances'],
+  ['leave-balances', 'leave_balances'],       // ✅ Added
+  ['leave-requests', 'leave_requests'],       // ✅ Added
   ['customers', 'customers']
 ];
 
@@ -85,7 +82,7 @@ for (const [route, file] of protectedRoutes) {
   app.use(`/api/${route}`, authenticate, require(`./routes/${file}`));
 }
 
-// Serve static frontend
+// Static frontend files
 app.use('/store', express.static(path.join(__dirname, 'store')));
 app.use('/', express.static(path.join(__dirname)));
 
