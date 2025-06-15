@@ -72,7 +72,7 @@ const protectedRoutes = [
   ['vacation-requests', 'vacation_requests'],
   ['customers', 'customers'],
   ['leave-balances', 'leave_balances'],
-  ['leave-requests', 'leave_requests']
+  ['leave_requests', 'leave_requests']
 ];
 
 for (const [route, file] of protectedRoutes) {
