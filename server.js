@@ -72,13 +72,16 @@ const protectedRoutes = [
   ['vacation-requests', 'vacation_requests'],
   ['customers', 'customers'],
   ['leave-balances', 'leave_balances'],
-  ['leave-requests', 'leave_requests']
+  ['leave-requests', 'leave_requests'],
+  ['leave-types', 'leave_types'] // ✅ Correct kebab-case URL mapped to snake_case file
 ];
 
+// Register each protected route
 for (const [route, file] of protectedRoutes) {
   app.use(`/api/${route}`, authenticate, require(`./routes/${file}`));
 }
 
+// Serve static frontend/store content
 app.use('/store', express.static(path.join(__dirname, 'store')));
 app.use('/', express.static(path.join(__dirname)));
 
