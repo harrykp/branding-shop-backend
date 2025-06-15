@@ -27,6 +27,9 @@ app.use('/api/auth', require('./routes/auth'));
 app.use('/api/industries', authenticate, require('./routes/industries'));
 app.use('/api/referral-sources', authenticate, require('./routes/referral_sources'));
 app.use('/api/product-categories', authenticate, require('./routes/product_categories'));
+app.use('/api/leave-balances', authenticate, require('./routes/leave_balances'));
+app.use('/api/leave-requests', authenticate, require('./routes/leave_requests'));
+
 
 // Core protected routes
 const protectedRoutes = [
