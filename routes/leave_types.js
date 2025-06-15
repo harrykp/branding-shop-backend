@@ -1,3 +1,4 @@
+// routes/leave_types.js
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
@@ -45,7 +46,7 @@ router.put('/:id', authenticate, async (req, res) => {
   try {
     const { name, description } = req.body;
     await db.query(
-      'UPDATE leave_types SET name=$1, description=$2  WHERE id=$3',
+      'UPDATE leave_types SET name=$1, description=$2 WHERE id=$3',
       [name, description, req.params.id]
     );
     res.json({ message: 'Leave type updated' });
