@@ -72,8 +72,8 @@ const protectedRoutes = [
   ['payment-types', 'payment_types'],
   ['payrolls', 'payrolls'],
   ['vacation-requests', 'vacation_requests'],
-  ['leave-requests', 'leave_requests'],
-  ['leave-balances', 'leave_balances'],
+  ['leave_requests', 'leave_requests'],
+  ['leave_balances', 'leave_balances'],
   ['customers', 'customers']
 ];
 
