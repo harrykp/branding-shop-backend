@@ -1,4 +1,4 @@
-// server.js
+// server.js (FULLY UPDATED)
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
@@ -6,7 +6,6 @@ require('dotenv').config();
 
 const app = express();
 
-// CORS configuration
 app.use(cors({
   origin: '*',
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -17,18 +16,17 @@ app.use(express.json());
 // Public reference data
 app.use('/api', require('./routes/referenceData'));
 
-// Auth middleware
 const { authenticate } = require('./middleware/auth');
 
-// Public routes
+// Public auth routes
 app.use('/api/auth', require('./routes/auth'));
 
-// Protected reference routes
+// Protected reference data
 app.use('/api/industries', authenticate, require('./routes/industries'));
 app.use('/api/referral-sources', authenticate, require('./routes/referral_sources'));
 app.use('/api/product-categories', authenticate, require('./routes/product_categories'));
 
-// Protected API routes
+// Protected modules
 const protectedRoutes = [
   ['users', 'users'],
   ['roles', 'roles'],
@@ -72,17 +70,15 @@ const protectedRoutes = [
   ['payment-types', 'payment_types'],
   ['payrolls', 'payrolls'],
   ['vacation-requests', 'vacation_requests'],
-  ['leave-balances', 'leave_balances'],       // ✅ Added
-  ['leave-requests', 'leave_requests'],       // ✅ Added
-  ['customers', 'customers']
+  ['customers', 'customers'],
+  ['leave-balances', 'leave_balances'],
+  ['leave-requests', 'leave_requests']
 ];
 
-// Register all protected routes
 for (const [route, file] of protectedRoutes) {
   app.use(`/api/${route}`, authenticate, require(`./routes/${file}`));
 }
 
-// Static frontend files
 app.use('/store', express.static(path.join(__dirname, 'store')));
 app.use('/', express.static(path.join(__dirname)));
 
