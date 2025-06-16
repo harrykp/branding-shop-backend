@@ -51,6 +51,7 @@ router.post('/', authenticate, async (req, res) => {
        VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
       [user_id, leave_type_id, start_date, end_date, reason, status, approved_by]
     );
+
     res.status(201).json({ message: 'Leave request created' });
   } catch (err) {
     console.error('Error creating leave request:', err);
@@ -73,6 +74,7 @@ router.put('/:id', authenticate, async (req, res) => {
        WHERE id = $8`,
       [user_id, leave_type_id, start_date, end_date, reason, status, approved_by, id]
     );
+
     res.json({ message: 'Leave request updated' });
   } catch (err) {
     console.error('Error updating leave request:', err);
