@@ -12,15 +12,20 @@ router.get('/', authenticate, async (req, res) => {
   const search = req.query.search || '';
 
   try {
-    const dataQuery = `
-      SELECT lr.*, u.name AS user_name, lt.name AS leave_type_name
+   const dataQuery = `
+      SELECT lr.*, 
+        u.name AS user_name, 
+        lt.name AS leave_type_name,
+        a.name AS approved_by_name
       FROM leave_requests lr
       JOIN users u ON lr.user_id = u.id
       JOIN leave_types lt ON lr.leave_type_id = lt.id
+      LEFT JOIN users a ON lr.approved_by = a.id
       WHERE u.name ILIKE $1
       ORDER BY lr.created_at DESC
       LIMIT $2 OFFSET $3
     `;
+
     const countQuery = `
       SELECT COUNT(*) FROM leave_requests lr
       JOIN users u ON lr.user_id = u.id
