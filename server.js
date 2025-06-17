@@ -73,7 +73,8 @@ const protectedRoutes = [
   ['customers', 'customers'],
   ['leave-balances', 'leave_balances'],
   ['leave-requests', 'leave_requests'],
-  ['leave-types', 'leave_types'] // ✅ Correct kebab-case URL mapped to snake_case file
+  ['leave-types', 'leave_types'], // ✅ Correct kebab-case URL mapped to snake_case file
+  ['bonuses', 'bonuses']
 ];
 
 // Register each protected route
