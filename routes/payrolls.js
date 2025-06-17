@@ -63,14 +63,25 @@ router.post('/', authenticate, async (req, res) => {
   } = req.body;
 
   try {
-    await db.query(
+    const result = await db.query(
       `INSERT INTO payrolls (
         user_id, period_start, period_end, gross_salary, bonuses, ssnit,
         paye, deductions, net_salary, paid_on, status, notes, created_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW())`,
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW()) RETURNING *`,
       [user_id, period_start, period_end, gross_salary, bonuses, ssnit, paye, deductions, net_salary, paid_on, status, notes]
     );
-    res.status(201).json({ message: 'Payroll created' });
+
+    const employeeResult = await db.query(
+      `SELECT name FROM users WHERE id = $1`,
+      [user_id]
+    );
+
+    const response = {
+      ...result.rows[0],
+      employee_name: employeeResult.rows[0]?.name || ''
+    };
+
+    res.status(201).json(response);
   } catch (err) {
     console.error('Error creating payroll:', err);
     res.status(500).json({ error: 'Failed to create payroll' });
