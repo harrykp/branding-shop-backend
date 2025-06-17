@@ -12,19 +12,18 @@ router.get('/', authenticate, async (req, res) => {
 
   try {
     const countResult = await db.query(
-      `SELECT COUNT(*) FROM payrolls p 
-       JOIN users u ON p.user_id = u.id 
-       WHERE u.name ILIKE $1 OR p.status ILIKE $1`,
+      `SELECT COUNT(*) FROM payrolls p JOIN users u ON p.user_id = u.id 
+       WHERE u.name ILIKE $1 OR COALESCE(p.notes, '') ILIKE $1`,
       [`%${search}%`]
     );
     const total = parseInt(countResult.rows[0].count);
 
     const result = await db.query(
       `SELECT p.*, u.name AS employee_name 
-       FROM payrolls p
-       JOIN users u ON p.user_id = u.id
-       WHERE u.name ILIKE $1 OR p.status ILIKE $1
-       ORDER BY p.period_start DESC
+       FROM payrolls p 
+       JOIN users u ON p.user_id = u.id 
+       WHERE u.name ILIKE $1 OR COALESCE(p.notes, '') ILIKE $1 
+       ORDER BY p.paid_on DESC 
        LIMIT $2 OFFSET $3`,
       [`%${search}%`, limit, offset]
     );
@@ -59,17 +58,17 @@ router.get('/:id', authenticate, async (req, res) => {
 // POST /api/payrolls
 router.post('/', authenticate, async (req, res) => {
   const {
-    user_id, period_start, period_end, gross_pay, bonuses, ssnit,
-    paye, deductions, net_pay, payment_date, status, notes
+    user_id, period_start, period_end, gross_salary, bonuses, ssnit,
+    paye, deductions, net_salary, paid_on, status, notes
   } = req.body;
 
   try {
     await db.query(
       `INSERT INTO payrolls (
-        user_id, period_start, period_end, gross_pay, bonuses, ssnit,
-        paye, deductions, net_pay, payment_date, status, notes, created_at
+        user_id, period_start, period_end, gross_salary, bonuses, ssnit,
+        paye, deductions, net_salary, paid_on, status, notes, created_at
       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW())`,
-      [user_id, period_start, period_end, gross_pay, bonuses, ssnit, paye, deductions, net_pay, payment_date, status, notes]
+      [user_id, period_start, period_end, gross_salary, bonuses, ssnit, paye, deductions, net_salary, paid_on, status, notes]
     );
     res.status(201).json({ message: 'Payroll created' });
   } catch (err) {
@@ -81,17 +80,17 @@ router.post('/', authenticate, async (req, res) => {
 // PUT /api/payrolls/:id
 router.put('/:id', authenticate, async (req, res) => {
   const {
-    user_id, period_start, period_end, gross_pay, bonuses, ssnit,
-    paye, deductions, net_pay, payment_date, status, notes
+    user_id, period_start, period_end, gross_salary, bonuses, ssnit,
+    paye, deductions, net_salary, paid_on, status, notes
   } = req.body;
 
   try {
     await db.query(
       `UPDATE payrolls SET 
-        user_id=$1, period_start=$2, period_end=$3, gross_pay=$4, bonuses=$5, 
-        ssnit=$6, paye=$7, deductions=$8, net_pay=$9, payment_date=$10, status=$11, notes=$12
+        user_id=$1, period_start=$2, period_end=$3, gross_salary=$4, bonuses=$5, 
+        ssnit=$6, paye=$7, deductions=$8, net_salary=$9, paid_on=$10, status=$11, notes=$12 
        WHERE id=$13`,
-      [user_id, period_start, period_end, gross_pay, bonuses, ssnit, paye, deductions, net_pay, payment_date, status, notes, req.params.id]
+      [user_id, period_start, period_end, gross_salary, bonuses, ssnit, paye, deductions, net_salary, paid_on, status, notes, req.params.id]
     );
     res.json({ message: 'Payroll updated' });
   } catch (err) {
